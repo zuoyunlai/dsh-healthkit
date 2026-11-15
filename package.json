@@ -3,7 +3,7 @@
   "version": "0.3.0",
   "private": true,
   "type": "module",
-  "description": "DSH 整机体检器：只读审计、评分、能力缺口与可回滚修复（host-agnostic engine + CLI）",
+  "description": "DSH 管家：只读体检评分、可还原清理、分数趋势（host-agnostic engine + CLI；结论可核、清理可撤销）",
   "main": "./index.js",
   "exports": {
     ".": "./index.js",
