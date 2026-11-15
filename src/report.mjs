@@ -4,7 +4,7 @@ export function renderReport(facts, findings, sc, opts) {
   var today = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
   L('# DSH 体检报告 ' + today);
   L('');
-  L('> 引擎 dsh-auditkit 0.1.0 · rubric ' + sc.rubricVersion + ' · 场景 ' + sc.scenario + ' · DSH_HOME ' + facts.home);
+  L('> 引擎 dsh-auditkit ' + (opts.version || '?') + ' · rubric ' + sc.rubricVersion + ' · 场景 ' + sc.scenario + ' · DSH_HOME ' + facts.home);
   L('> 只读审计。修复建议均为 L3-plan（只给命令与预检，不执行）。');
   L('');
   L('## 一、评分');
@@ -18,6 +18,12 @@ export function renderReport(facts, findings, sc, opts) {
     L('| ' + d.label + ' | ' + d.weight + '% | ' + d.score + ' | ' + (d.items.length ? d.items.join(', ') : '-') + ' |');
   });
   L('');
+  var attrLines = attributionLines(sc, opts.attr);
+  if (attrLines.length) {
+    L('## 一之二、先修哪几条');
+    L('');
+    attrLines.forEach(function (s) { L(s); });
+  }
   var order = { P0: 0, P1: 1, P2: 2, INFO: 3 };
   var sorted = findings.slice().sort(function (a, b) { return (order[a.severity] || 9) - (order[b.severity] || 9); });
   var cnt = { P0: 0, P1: 0, P2: 0, INFO: 0 };
@@ -71,4 +77,35 @@ export function renderReport(facts, findings, sc, opts) {
   L('---');
   L('由 dsh-auditkit 生成。规则不可靠时会输出 UNKNOWN 而不是猜测；误报请用 audit_retire 记档（P2 交付）。');
   return lines.join('\n') + '\n';
+}
+
+
+// 「先修哪几条」的小节内容。report 与 CLI/工具共用，避免两处文案漂移。
+export function attributionLines(sc, attr) {
+  var out = [];
+  if (!attr) return out;
+  var hasRows = attr.rows && attr.rows.length;
+  if (!hasRows && !attr.stage1) return out;
+  var sign = function (n) { return n > 0 ? '+' + n : String(n); };
+  out.push('> 分两步：先解 P0 封顶，再在解封后的基准上逐条算。单条增量**互不叠加**（分维度上限仍会互相影响）；「全修完」才是加总真值。');
+  out.push('');
+  if (attr.stage1) {
+    out.push('**第一步 ｜ 处理掉全部 P0（' + attr.stage1.count + ' 条）** ' + attr.stage1.from + ' → ' + attr.stage1.to + '（' + sign(attr.stage1.delta) + (attr.capped ? '，解除封顶' : '') + '）');
+    out.push('');
+    attr.stage1.items.forEach(function (s) { out.push('- ' + s); });
+    out.push('');
+  }
+  if (hasRows) {
+    out.push('**第二步 ｜ P0 清零后，再修这一条还能涨多少**（基准 ' + attr.stage2Base + '）');
+    out.push('');
+    out.push('| 增量 | 规则 | 问题 |');
+    out.push('|---|---|---|');
+    attr.rows.slice(0, 8).forEach(function (r) {
+      out.push('| ' + sign(r.delta) + ' | ' + r.ruleId + ' | ' + (r.title || '') + (r.target ? '（' + r.target + '）' : '') + ' |');
+    });
+    out.push('');
+  }
+  out.push('**全部计分项都修完** → ' + attr.potentialAll + ' / 10');
+  out.push('');
+  return out;
 }

@@ -18,7 +18,7 @@ import os from 'node:os';
 
 export const name = 'dsh-auditkit';
 
-const VERSION = '0.3.0';
+const VERSION = '0.4.0';
 
 function homeDir() { return process.env.DSH_HOME || path.join(os.homedir(), '.dsh'); }
 function statusPath() { return path.join(homeDir(), 'dsh-auditkit', 'plugin-status.json'); }
@@ -49,6 +49,7 @@ const RUN_SCHEMA = {
     findings: { type: 'number' },
     retired: { type: 'number' },
     summary: { type: 'string' },
+    gains: { type: 'array', items: { type: 'string' } },
   },
   required: ['score', 'band', 'p0', 'p1', 'p2', 'findings', 'summary'],
 };
@@ -115,6 +116,11 @@ const TOOLS = [
           '',
           v.summary,
         ];
+        if (v.gains && v.gains.length) {
+          lines.push('');
+          lines.push('— 先修哪几条 —');
+          for (const g of v.gains) lines.push(g);
+        }
         return text(lines.join('\n'));
       },
     },
@@ -140,6 +146,16 @@ const TOOLS = [
         findings: r.findings.length,
         retired: r.retired.length,
         summary: top || '（无 P0/P1）',
+        gains: (() => {
+          const a = r.attribution;
+          const out = [];
+          if (a && a.stage1) out.push('第一步｜关掉 ' + a.stage1.count + ' 条 P0：' + a.stage1.from + ' → ' + a.stage1.to + '（' + (a.stage1.delta > 0 ? '+' : '') + a.stage1.delta + '）');
+          if (a && a.rows && a.rows.length) {
+            out.push('第二步｜基准 ' + a.stage2Base + '：' + a.rows.slice(0, 3).map((x) => x.ruleId + ' +' + x.delta).join(' · '));
+          }
+          if (a) out.push('全修完 → ' + a.potentialAll + '/10');
+          return out;
+        })(),
       };
     },
   },

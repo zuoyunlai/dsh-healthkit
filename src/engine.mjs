@@ -14,6 +14,8 @@ export function saveRetirements(home, store) {
   fs.writeFileSync(p, JSON.stringify(store, null, 2) + '\n', 'utf8');
 }
 
+import { attribution } from './score.mjs';
+
 export function audit(opts) {
   opts = opts || {};
   var here = path.dirname(new URL(import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1'));
@@ -29,6 +31,8 @@ export function audit(opts) {
     if (store[f.fp]) { f.retired = store[f.fp]; retired.push(f); } else kept.push(f);
   });
   var sc = score(rubric, kept, opts.scenario || 'general');
-  var report = renderReport(facts, kept, sc, { retired: retired });
-  return { facts: facts, findings: kept, retired: retired, allFindings: findings, score: sc, report: report };
+  var attr = attribution(rubric, kept, sc);
+  var pkgVersion = (readJson(path.join(here, '..', 'package.json'), {}) || {}).version || '?';
+  var report = renderReport(facts, kept, sc, { retired: retired, attr: attr, version: pkgVersion });
+  return { facts: facts, findings: kept, retired: retired, allFindings: findings, score: sc, attribution: attr, report: report };
 }

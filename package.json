@@ -1,9 +1,9 @@
 {
   "name": "dsh-auditkit",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": true,
   "type": "module",
-  "description": "DSH 管家：只读体检评分、可还原清理、分数趋势（host-agnostic engine + CLI；结论可核、清理可撤销）",
+  "description": "DSH 体检：只读体检评分、可还原清理、分数趋势（host-agnostic engine + CLI；结论可核、清理可撤销）",
   "main": "./index.js",
   "exports": {
     ".": "./index.js",

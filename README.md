@@ -1,10 +1,10 @@
 # dsh-auditkit
 
-> **显示名：DSH 管家** · 体检 / 清理 / 趋势
-> 一句话：只读审计 → 评分 → 能力缺口 → 可还原的清理与修复。
+> **显示名：DSH 体检** · 体检 / 清理 / 趋势
+> 一句话：不替你优化，只告诉你哪儿该修。
 
 工程名仍是 `dsh-auditkit`（包名、profile 依赖、`$DSH_HOME/dsh-auditkit/` 数据目录都用它），
-为什么显示名和工程名分开，见文末《命名》。
+为什么显示名和工程名分开、为什么最后没叫「管家」，见文末《命名》。
 引擎（`src/`）与宿主无关，可单跑；插件壳（`index.js`）暴露成 DSH 工具。
 
 ## 给谁用
@@ -33,7 +33,7 @@ dsh plugin --profile <profile> add link:E:/path/to/dsh-auditkit
 | `audit_clean` | 清理可再生垃圾：**默认只预览**；执行也是先移入回收区，7 天内可一键还原 |
 | `audit_trend` | 分数历史：次数、最新分与变化、均值、最好/最差、P0 未关，附 sparkline |
 
-CLI：`node bin/audit.mjs --json | --scenario ... | --out <path> | --probe-all | --links | --retire <fp> | --list-retired | --dump-facts | --trend [days]`
+CLI：`node bin/audit.mjs --json | --scenario ... | --out <path> | --why | --probe-all | --links | --retire <fp> | --list-retired | --dump-facts | --trend [days]`
 　　　`--clean-preview | --clean-apply <ids> [--confirm] [--dry-run] | --clean-restore <batch> | --clean-list | --clean-purge [days]`
 
 ## 分数账本（P3）
@@ -116,10 +116,15 @@ docs/PLAN-2026-11-16.md  完整规划
 
 ## 命名
 
-**显示名「DSH 管家」，工程名 `dsh-auditkit`。** 这个分裂是刻意的：
+**显示名「DSH 体检」，工程名 `dsh-auditkit`。** 这个分裂是刻意的：
 
-- 「管家」是给**用户**看的，它说的是「这一摊事有人替你盯着」；
-- `auditkit` 是给**代码和宿主**看的，它说的是「这是审计工具」——而这恰好是可信度的来源。
+- 「体检」是给**用户**看的：做一次、有报告、能对比，而且**不承诺接管** —— 没人指望体检中心替你戒烟；
+- `auditkit` 是给**代码和宿主**看的，说的是「这是审计工具」，而这正是可信度的来源。
+
+**为什么最后没叫「管家」。** 一度认真考虑过「DSH 管家」，否掉的原因不是不好听，而是它默认了
+「我替你打理」——而这套东西刻意不接管：包操作不代跑、优化建议不计分、清理必须能还原。
+名不副实的东西，用户第三次使用就发现了。它真正能做的是「告诉你哪儿该修、修了能涨多少」，
+那是体检报告，不是管家。
 
 不把包名改掉，是因为改名要动 37 处引用（其中 12 处是功能性的：`package.json` 的 name、
 `cordis.patch.yml` 的 id 与 name、5 个模块里写死的 `dsh-auditkit` 数据目录路径）、
@@ -127,9 +132,8 @@ profile 里 2 处（依赖 key + bundles 条目），还要迁移 `$DSH_HOME/dsh
 （账本、退役库、清理回收区都在里面）——代价是一次重装 + 一次重启 + 一次目录迁移，
 而收益仅是多一个显示名，显示名本身不用改包就能拿到。
 
-**但「管家」这个词要防着用**：它容易让人以为这东西会替你打理、主动优化。
-本工具的立场恰相反——只报不瞒、只清可还原、包操作不代跑、advisory 不计分。
-所以对外一律带上副标题「体检 / 清理 / 趋势」，把「管家」限定在这三件事里。
+如果要一个比喻，可以是：「像管家一样盯着，像体检一样说人话」—— 但**名字给「体检」，管家只当形容**。
+对外一律带副标题「体检 / 清理 / 趋势」，把承诺锁死在这三件事里。
 
 ## 现状
 
@@ -137,4 +141,6 @@ profile 里 2 处（依赖 key + bundles 条目），还要迁移 `$DSH_HOME/dsh
 - 插件壳 0.3.0：四个工具 `audit_run` / `audit_report` / `audit_clean` / `audit_trend`，真宿主 `failures: []`。
 - P1 清理器已验收：夹具全生命周期（预览→dry-run→执行→list→还原→批次自清）+ 需确认档拒执行。
 - P3 分数账本已落地：每日折叠、sparkline、`--trend [days]`。
+- ① 分数归因已落地：`--why` / `audit_run.gains`，两步反事实（先解 P0 封顶 → 再算每条边际收益），
+  用同一套 rubric 重算，不另立公式；报告新增「一之二、先修哪几条」。
 - 路线见 `docs/PLAN-2-2026-11-16.md`：P2 面板（等你用过两周）、周检自动化（你说一声我建）、P4 装载面瘦身、P5 首装引导。

@@ -7,6 +7,7 @@ import { audit, loadRetirements, saveRetirements } from '../src/engine.mjs';
 import { loadIndex, saveIndex, bundleIndexFrom } from '../src/probe.mjs';
 import { scan as cleanScan, apply as cleanApply, restore as cleanRestore, listBatches as cleanList, purge as cleanPurge, renderScan, fmtBytes } from '../src/clean.mjs';
 import { append as historyAppend, stats as historyStats, renderStats as renderHistory } from '../src/history.mjs';
+import { attributionLines } from '../src/report.mjs';
 
 function arg(name, fallback) { var i = process.argv.indexOf('--' + name); return i > -1 ? process.argv[i + 1] : fallback; }
 function has(name) { return process.argv.indexOf('--' + name) > -1; }
@@ -72,6 +73,13 @@ if (has('links')) {
   console.log('---');
   console.log('missing=' + missing.length + (missing.length ? '（宿主启动时对应 bundle 会被静默跳过）' : '（全部存在）'));
   process.exit(missing.length ? 1 : 0);
+}
+
+// ---- 先修哪几条（①）：只读，不写报告、不记账 ----
+if (has('why')) {
+  var whyRes = audit({ scenario: arg('scenario', 'general') });
+  console.log(attributionLines(whyRes.score, whyRes.attribution).join('\n'));
+  process.exit(0);
 }
 
 // ---- 分数账本（P3）：只读，不改配置 ----
