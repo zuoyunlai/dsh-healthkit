@@ -18,7 +18,7 @@ import os from 'node:os';
 
 export const name = 'dsh-auditkit';
 
-const VERSION = '0.1.3';
+const VERSION = '0.2.0';
 
 function homeDir() { return process.env.DSH_HOME || path.join(os.homedir(), '.dsh'); }
 function statusPath() { return path.join(homeDir(), 'dsh-auditkit', 'plugin-status.json'); }
@@ -62,6 +62,20 @@ const REPORT_SCHEMA = {
     bytes: { type: 'number' },
   },
   required: ['path', 'score', 'findings'],
+};
+
+const CLEAN_SCHEMA = {
+  type: 'object',
+  properties: {
+    action: { type: 'string' },
+    ok: { type: 'boolean' },
+    freedBytes: { type: 'number' },
+    moved: { type: 'number' },
+    dryRun: { type: 'boolean' },
+    batch: { type: 'string' },
+    summary: { type: 'string' },
+  },
+  required: ['action', 'ok', 'summary'],
 };
 
 const TOOLS = [
@@ -131,6 +145,64 @@ const TOOLS = [
       const out = (args && args.out) || path.join(process.cwd(), 'AUDIT-' + d + '.md');
       fs.writeFileSync(out, r.report, 'utf8');
       return { path: out, score: r.score.total, findings: r.findings.length, bytes: Buffer.byteLength(r.report, 'utf8') };
+    },
+  },
+  {
+    name: 'audit_clean',
+    description: '清理会话外的可再生垃圾（缓存/过期备份/过期索引/远程镜像）：默认只预览，执行也是先移入回收区、7 天内可还原，绝不直删',
+    parameters: {
+      type: 'object',
+      properties: {
+        action: { type: 'string', description: 'preview|apply|restore|list|purge，缺省 preview' },
+        ids: { type: 'array', items: { type: 'string' }, description: 'apply 时要清理的分组 id（从 preview 拿）' },
+        confirm: { type: 'boolean', description: '允许动「需确认」档（远程工作区镜像）' },
+        dryRun: { type: 'boolean', description: '只演不练' },
+        batch: { type: 'string', description: 'restore 时的批次号' },
+        olderThanDays: { type: 'number', description: 'purge 的天数门槛，缺省 7' },
+      },
+      additionalProperties: false,
+    },
+    output: {
+      schema: CLEAN_SCHEMA,
+      render(_args, v) {
+        return text('dsh-auditkit · clean/' + v.action + (v.dryRun ? '（预演）' : '') + '\n' + v.summary);
+      },
+    },
+    execute: async (args) => {
+      const { scan, apply, restore, listBatches, purge, renderScan, fmtBytes } = await import('./src/clean.mjs');
+      const a = (args && args.action) || 'preview';
+      if (a === 'preview') {
+        const s = scan({});
+        return { action: 'preview', ok: true, freedBytes: s.safeBytes, moved: 0, dryRun: true, batch: '', summary: renderScan(s) };
+      }
+      if (a === 'list') {
+        const bs = listBatches();
+        const summary = bs.length
+          ? bs.map((b) => b.batch + ' · ' + fmtBytes(b.bytes) + ' · ' + b.entries + ' 项 · ' + (b.ageDays === null ? '' : b.ageDays + ' 天前') + ' · 还原截止 ' + (b.restoreBefore || '-')).join('\n')
+          : '回收区为空';
+        return { action: 'list', ok: true, freedBytes: 0, moved: 0, dryRun: true, batch: '', summary };
+      }
+      if (a === 'apply') {
+        const r = apply((args && args.ids) || [], { confirm: !!(args && args.confirm), dryRun: !!(args && args.dryRun) });
+        if (!r.ok) return { action: 'apply', ok: false, freedBytes: 0, moved: 0, dryRun: !!(args && args.dryRun), batch: '', summary: '未执行：' + r.error + ((r.skipped && r.skipped.length) ? '\n' + r.skipped.join('\n') : '') };
+        const head = (r.dryRun ? '预演：将释放 ' : '已释放 ') + fmtBytes(r.freedBytes) + '，' + r.items.length + ' 项';
+        const tail = r.batch ? '\n批次 ' + r.batch + '，还原截止 ' + r.restoreBefore + '（audit_clean action=restore batch=' + r.batch + '）' : '';
+        const skips = (r.skipped && r.skipped.length) ? '\n跳过 ' + r.skipped.length + ' 项：\n' + r.skipped.join('\n') : '';
+        return { action: 'apply', ok: true, freedBytes: r.freedBytes, moved: r.items.length, dryRun: !!r.dryRun, batch: r.batch || '', summary: head + tail + skips };
+      }
+      if (a === 'restore') {
+        const r = restore(args && args.batch);
+        if (!r.ok) return { action: 'restore', ok: false, freedBytes: 0, moved: 0, dryRun: false, batch: String((args && args.batch) || ''), summary: '还原失败：' + r.error };
+        const s = '已还原 ' + r.restored.length + ' 项' + (r.conflicts.length ? '，冲突 ' + r.conflicts.length + ' 项\n' + r.conflicts.join('\n') : '');
+        return { action: 'restore', ok: true, freedBytes: 0, moved: r.restored.length, dryRun: false, batch: String(r.batch || ''), summary: s };
+      }
+      if (a === 'purge') {
+        const r = purge({ olderThanDays: (args && args.olderThanDays) || 7, dryRun: !!(args && args.dryRun) });
+        const n = r.dryRun ? r.candidates.length : r.purged.length;
+        const s = (r.dryRun ? '预演：将永久删除 ' : '已永久删除 ') + n + ' 个批次，' + fmtBytes(r.bytes);
+        return { action: 'purge', ok: true, freedBytes: r.bytes, moved: n, dryRun: !!r.dryRun, batch: '', summary: s };
+      }
+      return { action: String(a), ok: false, freedBytes: 0, moved: 0, dryRun: true, batch: '', summary: '未知 action：' + a + '（preview|apply|restore|list|purge）' };
     },
   },
 ];

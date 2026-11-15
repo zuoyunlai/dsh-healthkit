@@ -5,6 +5,7 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { audit, loadRetirements, saveRetirements } from '../src/engine.mjs';
 import { loadIndex, saveIndex, bundleIndexFrom } from '../src/probe.mjs';
+import { scan as cleanScan, apply as cleanApply, restore as cleanRestore, listBatches as cleanList, purge as cleanPurge, renderScan, fmtBytes } from '../src/clean.mjs';
 
 function arg(name, fallback) { var i = process.argv.indexOf('--' + name); return i > -1 ? process.argv[i + 1] : fallback; }
 function has(name) { return process.argv.indexOf('--' + name) > -1; }
@@ -70,6 +71,49 @@ if (has('links')) {
   console.log('---');
   console.log('missing=' + missing.length + (missing.length ? '（宿主启动时对应 bundle 会被静默跳过）' : '（全部存在）'));
   process.exit(missing.length ? 1 : 0);
+}
+
+// ---- 清理器（P1）：全部先进回收区，7 天内可还原 ----
+var cleanAge = Number(arg('min-age', '14'));
+if (!Number.isFinite(cleanAge)) cleanAge = 14;
+
+if (has('clean-preview')) {
+  console.log(renderScan(cleanScan({ minAgeDays: cleanAge })));
+  process.exit(0);
+}
+if (has('clean-list')) {
+  var batches = cleanList();
+  if (!batches.length) console.log('回收区为空');
+  batches.forEach(function (b) {
+    console.log(b.batch + '  ' + fmtBytes(b.bytes) + ' / ' + b.entries + ' 项  建于 ' + b.createdAt + '  ' + (b.ageDays === null ? '' : b.ageDays + ' 天前') + '  还原截止 ' + (b.restoreBefore || '-'));
+  });
+  process.exit(0);
+}
+if (has('clean-apply')) {
+  var cleanIds = String(arg('clean-apply', '')).split(',').map(function (s) { return s.trim(); }).filter(Boolean);
+  var cres = cleanApply(cleanIds, { confirm: has('confirm'), dryRun: has('dry-run'), minAgeDays: cleanAge });
+  if (!cres.ok) {
+    console.error('清理失败: ' + cres.error);
+    (cres.skipped || []).forEach(function (s) { console.error('  skip: ' + s); });
+    process.exit(2);
+  }
+  console.log((cres.dryRun ? '[预演] 将释放 ' : '已释放 ') + fmtBytes(cres.freedBytes) + ' / ' + cres.items.length + ' 项' + (cres.batch ? '，批次 ' + cres.batch + '，还原截止 ' + cres.restoreBefore : ''));
+  (cres.skipped || []).forEach(function (s) { console.log('  skip: ' + s); });
+  process.exit(0);
+}
+if (has('clean-restore')) {
+  var rres = cleanRestore(arg('clean-restore', ''));
+  if (!rres.ok) { console.error('还原失败: ' + rres.error); process.exit(2); }
+  console.log('已还原 ' + rres.restored.length + ' 项' + (rres.conflicts.length ? '，冲突 ' + rres.conflicts.length + ' 项' : ''));
+  rres.conflicts.forEach(function (c) { console.log('  ' + c); });
+  process.exit(0);
+}
+if (has('clean-purge')) {
+  var purgeAge = Number(arg('clean-purge', '7'));
+  if (!Number.isFinite(purgeAge)) purgeAge = 7;
+  var pres = cleanPurge({ olderThanDays: purgeAge, dryRun: has('dry-run') });
+  console.log((pres.dryRun ? '[预演] 将永久删除 ' : '已永久删除 ') + (pres.dryRun ? pres.candidates.length : pres.purged.length) + ' 个批次，' + fmtBytes(pres.bytes));
+  process.exit(0);
 }
 
 if (has('list-retired')) {

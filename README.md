@@ -26,8 +26,24 @@ dsh plugin --profile <profile> add link:E:/path/to/dsh-auditkit
 | --- | --- |
 | `audit_run` | 只读体检，返回总分、分档、P0/P1/P2 计数与 P0/P1 清单 |
 | `audit_report` | 跑体检并把完整 Markdown 报告写到工作区 `AUDIT-<日期>.md` |
+| `audit_clean` | 清理可再生垃圾：**默认只预览**；执行也是先移入回收区，7 天内可一键还原 |
 
-CLI：`node bin/audit.mjs --json | --scenario code|design|writing | --out <path> | --probe-all | --links | --retire <fp> | --list-retired | --dump-facts`
+CLI：`node bin/audit.mjs --json | --scenario ... | --out <path> | --probe-all | --links | --retire <fp> | --list-retired | --dump-facts`
+　　　`--clean-preview | --clean-apply <ids> [--confirm] [--dry-run] | --clean-restore <batch> | --clean-list | --clean-purge [days]`
+
+## 清理器（P1，0.2.0）
+
+「清出几个 G」这个钩子在 DSH 里是空的：总量 2.2G 里 `node_modules` 701M、`dsh-runtimes` 506M、
+`dsh-ops` 108M 都是必需品，`attachments`+`sessions` 在 30/60/90 天 TTL 下回收 **0MB**。
+实测默认可动只有 **37.3 MB**（缓存 + ≥14 天过期备份 + 审计器过期索引），
+再加「需确认」档（远程工作区镜像）共 **84.9 MB**。
+
+所以这套清理器的重点不是数字，是**敢让人按下去**：
+
+- **永不直删** —— 一律 `$DSH_HOME/dsh-auditkit/trash/<批次>/`，带 `manifest.json`，7 天内 `restore` 原样搬回
+- **今天生成的备份绝不动** —— `_backup` 只按 mtime ≥14 天淘汰，`profile-bak-<今天>` 永远留在原地
+- **护栏硬挡** —— 不在 `DSH_HOME` 内、或命中 `node_modules`/`sessions`/`attachments`/`skills`/`data`/`.git`/credentials，一律拒绝；`apply` 必须显式给 ids，没有「全清」
+- **需确认档** —— 远程工作区镜像在 `machines.json` 里仍有登记，删掉等于删你的本地同步副本，不带 `confirm` 就不动
 
 ## 宿主契约（四条，全部是运行层踩出来的，不是推断）
 
@@ -82,5 +98,6 @@ docs/PLAN-2026-11-16.md  完整规划
 ## 现状
 
 - 引擎：R1–R23 全跑，夹具回归 12/12，advisory 不进分数。
-- 插件壳：0.1.3 起在真宿主注册成功（`registered: ["audit_run","audit_report"]`）。
-- 待办：P2 夹具可移植、P3 修复器 L1/L2 + L3-plan、P4 场景预设与能力缺口、P5 `init` 引导、P6 面板与趋势。
+- 插件壳 0.2.0：真宿主注册 `registered: ["audit_run","audit_report","audit_clean"]`，`failures: []`。
+- P1 清理器已验收：夹具全生命周期（预览→dry-run→执行→list→还原→批次自清）+ 需确认档拒执行。
+- 路线见 `docs/PLAN-2-2026-11-16.md`：P2 面板（等你用过两周）、P3 周检与趋势、P4 装载面瘦身、P5 首装引导。
