@@ -1,6 +1,6 @@
 {
   "name": "dsh-auditkit",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
   "description": "DSH 整机体检器：只读审计、评分、能力缺口与可回滚修复（host-agnostic engine + CLI）",

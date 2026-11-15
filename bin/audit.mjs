@@ -6,6 +6,7 @@ import { spawnSync } from 'node:child_process';
 import { audit, loadRetirements, saveRetirements } from '../src/engine.mjs';
 import { loadIndex, saveIndex, bundleIndexFrom } from '../src/probe.mjs';
 import { scan as cleanScan, apply as cleanApply, restore as cleanRestore, listBatches as cleanList, purge as cleanPurge, renderScan, fmtBytes } from '../src/clean.mjs';
+import { append as historyAppend, stats as historyStats, renderStats as renderHistory } from '../src/history.mjs';
 
 function arg(name, fallback) { var i = process.argv.indexOf('--' + name); return i > -1 ? process.argv[i + 1] : fallback; }
 function has(name) { return process.argv.indexOf('--' + name) > -1; }
@@ -71,6 +72,16 @@ if (has('links')) {
   console.log('---');
   console.log('missing=' + missing.length + (missing.length ? '（宿主启动时对应 bundle 会被静默跳过）' : '（全部存在）'));
   process.exit(missing.length ? 1 : 0);
+}
+
+// ---- 分数账本（P3）：只读，不改配置 ----
+if (has('trend')) {
+  var trendDays = Number(arg('trend', '30'));
+  if (!Number.isFinite(trendDays) || trendDays <= 0) trendDays = 30;
+  var tstats = historyStats({ days: trendDays });
+  if (has('json')) process.stdout.write(JSON.stringify(tstats, null, 2) + '\n');
+  else console.log(renderHistory(tstats));
+  process.exit(0);
 }
 
 // ---- 清理器（P1）：全部先进回收区，7 天内可还原 ----
@@ -145,6 +156,7 @@ try {
     console.log('retired: ' + target.fp + '  (' + target.title + ')');
     process.exit(0);
   }
+  historyAppend(result, { scenario: scenario });
   var factsOut = arg('dump-facts', null);
   if (factsOut) { fs.mkdirSync(path.dirname(factsOut), { recursive: true }); fs.writeFileSync(factsOut, JSON.stringify(result.facts, null, 2), 'utf8'); }
   fs.writeFileSync(out, result.report, 'utf8');

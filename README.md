@@ -27,9 +27,24 @@ dsh plugin --profile <profile> add link:E:/path/to/dsh-auditkit
 | `audit_run` | 只读体检，返回总分、分档、P0/P1/P2 计数与 P0/P1 清单 |
 | `audit_report` | 跑体检并把完整 Markdown 报告写到工作区 `AUDIT-<日期>.md` |
 | `audit_clean` | 清理可再生垃圾：**默认只预览**；执行也是先移入回收区，7 天内可一键还原 |
+| `audit_trend` | 分数历史：次数、最新分与变化、均值、最好/最差、P0 未关，附 sparkline |
 
-CLI：`node bin/audit.mjs --json | --scenario ... | --out <path> | --probe-all | --links | --retire <fp> | --list-retired | --dump-facts`
+CLI：`node bin/audit.mjs --json | --scenario ... | --out <path> | --probe-all | --links | --retire <fp> | --list-retired | --dump-facts | --trend [days]`
 　　　`--clean-preview | --clean-apply <ids> [--confirm] [--dry-run] | --clean-restore <batch> | --clean-list | --clean-purge [days]`
+
+## 分数账本（P3）
+
+`audit_run` / `audit_report` / CLI 主路径每跑一次，往 `$DSH_HOME/dsh-auditkit/history.jsonl` 追加一行
+（append-only，最多留 2000 条）。读取时**按本地日期折叠成每日一次**，一天跑十次也不会把趋势画歪。
+
+```
+近 30 天 9 次体检 · 最新 6.1/10（+1.1） · 2026-11-15
+▄▄▄▄▄▄▅▅▅
+均值 4.96（近 7 次） · 历史 4.79 · 最好 6.1 · 最差 4.2 · P0 未关 0
+```
+
+为什么要单独一层：`engine.audit()` 保持纯函数（只读、可重复），**记账放在调用层**。
+这样「只读体检」的承诺不被污染，账本坏掉也不影响体检结论。
 
 ## 清理器（P1，0.2.0）
 
@@ -71,7 +86,7 @@ cp ~/.dsh/profiles/desktop/{package.json,cordis.patch.yml} "$H/profiles/probe/"
 # node_modules 用 junction 指回真 profile，避免几百 MB 拷贝（Windows）
 powershell -NoProfile -Command 'New-Item -ItemType Junction -Path "E:\auditkit-boot-home\profiles\probe\node_modules" -Target "C:\Users\Zuoyunlai\.dsh\profiles\desktop\node_modules"'
 DSH_HOME=$H dsh --profile probe --dump-config   # 只看合成树（含 skipped 原因）
-DSH_HOME=$H dsh --profile probe web             # 真挂载一次；忽略 "too many arguments" 收尾错
+DSH_HOME=$H dsh --profile probe1 --no-open      # 真挂载一次（用 profile 名，别加 app 参数；--no-open 免得弹浏览器）
 cat $H/dsh-auditkit/plugin-status.json          # 看 registered / failures
 ```
 
@@ -98,6 +113,7 @@ docs/PLAN-2026-11-16.md  完整规划
 ## 现状
 
 - 引擎：R1–R23 全跑，夹具回归 12/12，advisory 不进分数。
-- 插件壳 0.2.0：真宿主注册 `registered: ["audit_run","audit_report","audit_clean"]`，`failures: []`。
+- 插件壳 0.3.0：四个工具 `audit_run` / `audit_report` / `audit_clean` / `audit_trend`，真宿主 `failures: []`。
 - P1 清理器已验收：夹具全生命周期（预览→dry-run→执行→list→还原→批次自清）+ 需确认档拒执行。
-- 路线见 `docs/PLAN-2-2026-11-16.md`：P2 面板（等你用过两周）、P3 周检与趋势、P4 装载面瘦身、P5 首装引导。
+- P3 分数账本已落地：每日折叠、sparkline、`--trend [days]`。
+- 路线见 `docs/PLAN-2-2026-11-16.md`：P2 面板（等你用过两周）、周检自动化（你说一声我建）、P4 装载面瘦身、P5 首装引导。

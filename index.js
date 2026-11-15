@@ -18,7 +18,7 @@ import os from 'node:os';
 
 export const name = 'dsh-auditkit';
 
-const VERSION = '0.2.0';
+const VERSION = '0.3.0';
 
 function homeDir() { return process.env.DSH_HOME || path.join(os.homedir(), '.dsh'); }
 function statusPath() { return path.join(homeDir(), 'dsh-auditkit', 'plugin-status.json'); }
@@ -78,6 +78,23 @@ const CLEAN_SCHEMA = {
   required: ['action', 'ok', 'summary'],
 };
 
+const TREND_SCHEMA = {
+  type: 'object',
+  properties: {
+    action: { type: 'string' },
+    days: { type: 'number' },
+    runs: { type: 'number' },
+    daysTracked: { type: 'number' },
+    latest: { type: 'number' },
+    delta: { type: 'number' },
+    avg7: { type: 'number' },
+    p0: { type: 'number' },
+    sparkline: { type: 'string' },
+    summary: { type: 'string' },
+  },
+  required: ['action', 'summary'],
+};
+
 const TOOLS = [
   {
     name: 'audit_run',
@@ -104,6 +121,8 @@ const TOOLS = [
     execute: async (args) => {
       const { audit } = await import('./src/engine.mjs');
       const r = audit({ scenario: (args && args.scenario) || 'general' });
+      const hist = await import('./src/history.mjs');
+      hist.append(r, { scenario: (args && args.scenario) || 'general' });
       const by = {};
       r.findings.forEach((f) => { by[f.severity] = (by[f.severity] || 0) + 1; });
       const top = r.findings
@@ -141,6 +160,8 @@ const TOOLS = [
     execute: async (args) => {
       const { audit } = await import('./src/engine.mjs');
       const r = audit({ scenario: 'general' });
+      const hist = await import('./src/history.mjs');
+      hist.append(r, { scenario: 'general' });
       const d = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
       const out = (args && args.out) || path.join(process.cwd(), 'AUDIT-' + d + '.md');
       fs.writeFileSync(out, r.report, 'utf8');
@@ -203,6 +224,38 @@ const TOOLS = [
         return { action: 'purge', ok: true, freedBytes: r.bytes, moved: n, dryRun: !!r.dryRun, batch: '', summary: s };
       }
       return { action: String(a), ok: false, freedBytes: 0, moved: 0, dryRun: true, batch: '', summary: '未知 action：' + a + '（preview|apply|restore|list|purge）' };
+    },
+  },
+  {
+    name: 'audit_trend',
+    description: '看分数历史：近 N 天的体检次数、最新分与变化、均值、最好/最差、P0 未关，附 sparkline（账本只读，每日折叠）',
+    parameters: {
+      type: 'object',
+      properties: { days: { type: 'number', description: '回看天数，缺省 30' } },
+      additionalProperties: false,
+    },
+    output: {
+      schema: TREND_SCHEMA,
+      render(_args, v) {
+        return text(v.summary);
+      },
+    },
+    execute: async (args) => {
+      const { stats, renderStats } = await import('./src/history.mjs');
+      const s = stats({ days: (args && args.days) || 30 });
+      const num = (x) => (typeof x === 'number' ? x : 0);
+      return {
+        action: 'trend',
+        days: num(s.days),
+        runs: num(s.runs),
+        daysTracked: num(s.daysTracked),
+        latest: num(s.latest),
+        delta: num(s.delta),
+        avg7: num(s.avg7),
+        p0: num(s.p0),
+        sparkline: s.sparkline || '',
+        summary: renderStats(s),
+      };
     },
   },
 ];
