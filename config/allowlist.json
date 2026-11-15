@@ -1,0 +1,21 @@
+{
+  "_comment": "依赖未挂载但仍被刻意保留的包：R1 不报，报告中列出理由",
+  "depsNotBundled": {
+    "@michengai/dsh-find-plugins": "config 里有 disabled:false 引用，可能为客户端入口，待确认",
+    "dsh-wsl-tool": "可能作为 WSL 备用通道保留"
+  },
+  "_comment2": "核心实验 bundle 的 id 在 patch 里只写 id 不写 name，静态推导无法判定，需 probe 确认 → 先按已知清单豁免",
+  "corePatchIds": [
+    "cot-translation",
+    "experimental-inspector"
+  ],
+  "_comment3": "冷静期豁免中已确认「包未安装但必须保留」的条目（.npmrc 记录的历史原因）",
+  "exclusionsDead": {
+    "@dsh-ops/bash-win32-x64@0.2.1": "镜像只有 0.0.0-stage，见 profile/.npmrc 注释",
+    "@dsh-ops/fastctx-win32-x64@0.2.1": "同上",
+    "@dsh-ops/pwsh-win32-x64@0.2.1": "同上"
+  },
+  "engineAssetMarkers": [
+    "provenance.json"
+  ]
+}

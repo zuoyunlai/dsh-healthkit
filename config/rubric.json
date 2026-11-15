@@ -1,0 +1,25 @@
+{
+  "version": "rubric-v1.1-2026-11-16",
+  "dimensions": [
+    { "key": "security", "weight": 25, "label": "安全与权限边界" },
+    { "key": "consistency", "weight": 20, "label": "配置一致性/可维护性" },
+    { "key": "modelCost", "weight": 15, "label": "模型与成本" },
+    { "key": "plugins", "weight": 15, "label": "插件能力面" },
+    { "key": "reliability", "weight": 10, "label": "可靠性与可观测性" },
+    { "key": "disk", "weight": 10, "label": "磁盘卫生" },
+    { "key": "context", "weight": 5, "label": "上下文效率" }
+  ],
+  "penalty": { "P0": 4.0, "P1": 1.8, "P2": 0.5, "UNKNOWN": 0.5 },
+  "base": 10,
+  "dimensionCaps": [ { "findings": 3, "max": 5.5 }, { "findings": 5, "max": 3.5 } ],
+  "caps": [
+    { "when": "p0Open >= 3", "max": 4.0, "reason": "存在 3 个以上未关闭 P0" },
+    { "when": "p0Open >= 1", "max": 5.0, "reason": "存在未关闭 P0" }
+  ],
+  "scenarios": {
+    "code":    { "overrides": { "consistency": 25, "context": 10, "plugins": 10 } },
+    "writing": { "overrides": { "context": 25, "consistency": 15 } },
+    "design":  { "overrides": { "plugins": 20, "context": 10 } }
+  },
+  "bands": [ { "min": 8.5, "label": "良好" }, { "min": 7.0, "label": "可用" }, { "min": 5.0, "label": "需治理" }, { "min": 0, "label": "高风险" } ]
+}

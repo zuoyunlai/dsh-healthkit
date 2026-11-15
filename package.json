@@ -1,0 +1,11 @@
+{
+  "name": "dsh-auditkit",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "DSH 整机体检器：只读审计、评分、能力缺口与可回滚修复（host-agnostic engine + CLI）",
+  "bin": { "dsh-auditkit": "./bin/audit.mjs" },
+  "main": "./src/engine.mjs",
+  "scripts": { "audit": "node ./bin/audit.mjs", "smoke": "node ./bin/audit.mjs --out ./AUDIT-smoke.md" },
+  "engines": { "node": ">=20" }
+}
