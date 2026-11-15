@@ -1,0 +1,8 @@
+# dsh-auditkit —— bundle patch
+# 装配时把本条目插进 profile 的配置树；行名即包名（实测自 dsh-pet 的 patch 形状）。
+- insert:
+    - id: dsh-auditkit
+      name: 'dsh-auditkit'
+      config:
+        reportDir: ''
+        allowRepair: false

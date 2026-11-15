@@ -400,5 +400,22 @@ export function runRules(facts, allowlist) {
       measured: { presets: presets.map(function (p) { return { name: p.name, entries: p.entryCount, names: p.names }; }) } }));
   }
 
+  // ---- R23 bundle 必须声明 dsh.bundle，否则宿主静默跳过该层 ----
+  facts.profiles.forEach(function (p) {
+    var nativeBundles = p.bundles.filter(function (b) { return b.indexOf('@deepseek-ai/') !== 0; });
+    var noManifest = [];
+    nativeBundles.forEach(function (b) {
+      var pj = readJson(path.join(p.dir, 'node_modules', b, 'package.json'), null);
+      if (!pj) return;
+      if (!pj.dsh || !pj.dsh.bundle) noManifest.push(b);
+    });
+    if (noManifest.length) {
+      out.push(F({ ruleId: 'R23', dimension: 'reliability', severity: 'P0',
+        title: 'bundle 未声明 dsh.bundle，宿主会静默跳过 ' + noManifest.length + ' 个（' + p.name + '）',
+        evidence: [p.dir + '/package.json'], measured: { bundles: noManifest },
+        fixHint: '在包 package.json 补 dsh.bundle.patch；否则启动日志里只有一行 skipping profile bundle' }));
+    }
+  });
+
   return out;
 }
