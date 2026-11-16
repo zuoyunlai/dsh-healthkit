@@ -30,6 +30,8 @@ const reqRemote = { url: '/dsh-healthkit-panel', socket: { remoteAddress: '192.1
   // 服务端渲染：分数直接出现在 HTML 里，不依赖客户端 JS（侧边栏 iframe 禁脚本也能看）
   assert.ok(/<div class="v">\d+(\.\d+)?<\/div>/.test(res.body), 'HTML 应含服务端渲染的分数');
   assert.ok(res.body.includes('<meta http-equiv="refresh"'), '应有 meta 自刷新（不用 JS）');
+  assert.ok(res.body.includes('<polyline'), '应有趋势折线');
+  assert.ok(res.body.includes('能力域'), '应有能力域段');
   assert.ok(!/https?:\/\//.test(res.body.replace(/http:\/\/127\.0\.0\.1/g, '')), 'HTML 不应有外链（离线可用）');
 }
 

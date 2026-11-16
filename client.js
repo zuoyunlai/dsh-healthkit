@@ -27,7 +27,10 @@ window.__ModuleLoader__.load({
         advisory: '建议项（不计分）', confidence: '置信度', score: '总分', band: '分档',
         open: '未解决', cleanable: '可清理', plugins: '插件 / 上限', trend: '最新分',
         step1: '第一步', step2: '第二步', all: '全部修完', none: '没有未解决的问题',
-        first: '首次', capped: '解除封顶',
+        first: '首次', capped: '解除封顶', onlyOne: '只有 1 个数据点，再跑几次才有折线',
+        caps: '能力域', noRedundant: '没有多实现的域',
+        missingPrefix: '无实现：', missingTail: '（只表示当前没有，不代表该装）',
+        capsHint: '补救阶梯用 audit_capabilities：先配置 → 再宿主内置 → 最后才装插件',
       },
       en: {
         title: 'Checkup', refresh: 'Refresh', loading: 'Loading…', retry: 'Retry', error: 'Panel error: ',
@@ -37,7 +40,10 @@ window.__ModuleLoader__.load({
         advisory: 'advisory', confidence: 'confidence', score: 'Score', band: 'Band',
         open: 'Open', cleanable: 'Cleanable', plugins: 'Plugins / limit', trend: 'Latest',
         step1: 'Step 1', step2: 'Step 2', all: 'Fix everything', none: 'No open findings',
-        first: 'first run', capped: 'uncapped',
+        first: 'first run', capped: 'uncapped', onlyOne: 'Only 1 data point — run a few more times',
+        caps: 'Capabilities', noRedundant: 'No duplicated capability',
+        missingPrefix: 'Missing: ', missingTail: ' (absence ≠ you need it)',
+        capsHint: 'Ladder via audit_capabilities: config → builtin → plugin last',
       },
     };
 
@@ -90,6 +96,44 @@ window.__ModuleLoader__.load({
       if (typeof n !== 'number' || !isFinite(n) || n <= 0) return '0 B';
       if (n >= 1073741824) return (n / 1073741824).toFixed(1) + ' GB';
       return (n / 1048576).toFixed(1) + ' MB';
+    }
+
+    // SVG 折线：y 轴固定 0–10（不按 min/max 自适应，否则 8.3→8.4 会被画成陡坡）。
+    // 用「按次」数据而不是按天折叠：改完配置当天再跑一次就能看见变化。
+    function trendChart(pts, lang) {
+      const list = (pts || []).filter(function (p) { return typeof p.total === 'number'; });
+      if (list.length < 2) {
+        return h('div', { style: { fontSize: 11, color: C.dim, marginTop: 6 } }, lang.onlyOne);
+      }
+      const W = 100, H = 30, PAD = 2;
+      const x = function (i) { return PAD + (i / (list.length - 1)) * (W - 2 * PAD); };
+      const y = function (v) { return H - PAD - (Math.max(0, Math.min(10, v)) / 10) * (H - 2 * PAD); };
+      const points = list.map(function (p, i) { return x(i).toFixed(2) + ',' + y(p.total).toFixed(2); }).join(' ');
+      const ref = function (v) {
+        return h('line', {
+          key: 'r' + v, x1: PAD, y1: y(v), x2: W - PAD, y2: y(v),
+          stroke: 'currentColor', strokeOpacity: 0.18, strokeWidth: 0.4,
+          strokeDasharray: '2 2', vectorEffect: 'non-scaling-stroke',
+        });
+      };
+      const stamp = function (p) { return String(p.at || p.day || '').slice(11, 16) || String(p.day || '').slice(5); };
+      const vals = list.map(function (p) { return p.total; });
+      const lo = Math.min.apply(null, vals), hi = Math.max.apply(null, vals);
+      return h('div', { style: { marginTop: 8 } },
+        h('svg', {
+          viewBox: '0 0 ' + W + ' ' + H, preserveAspectRatio: 'none',
+          style: { width: '100%', height: 34, display: 'block', color: C.dim },
+        },
+          ref(10), ref(8), ref(5),
+          h('polyline', {
+            points: points, fill: 'none', stroke: C.accent, strokeWidth: 1.4,
+            strokeLinejoin: 'round', strokeLinecap: 'round', vectorEffect: 'non-scaling-stroke',
+          })),
+        h('div', { style: { display: 'flex', justifyContent: 'space-between', fontSize: 10, color: C.dim } },
+          h('span', null, stamp(list[0]) + ' · ' + list[0].total),
+          h('span', null, '低 ' + lo + ' / 高 ' + hi + ' · ' + list.length + ' 次'),
+          h('span', null, stamp(list[list.length - 1]) + ' · ' + list[list.length - 1].total)),
+      );
     }
 
     function section(title) {
@@ -218,6 +262,23 @@ window.__ModuleLoader__.load({
       }
       if (!adviceNodes.length) adviceNodes.push(h('li', { key: 'n', style: { fontSize: 12, color: C.dim } }, '—'));
 
+      const capsNode = d.capabilities
+        ? h('div', null,
+            section(lang.caps + '（' + d.capabilities.ok + ' 有 / ' + d.capabilities.redundant + ' 多 / ' + d.capabilities.missing + ' 无）'),
+            h('ul', { style: { margin: 0, paddingLeft: 18 } },
+              (d.capabilities.redundantRows && d.capabilities.redundantRows.length
+                ? d.capabilities.redundantRows.map(function (x, i) {
+                    return h('li', { key: 'r' + i, style: { fontSize: 12, margin: '3px 0' } },
+                      h('b', null, x.label), ' · ' + x.count + ' 个实现：' + x.plugins.join('、'));
+                  })
+                : [h('li', { key: 'none', style: { fontSize: 12, color: C.dim } }, lang.noRedundant)]),
+              d.capabilities.missingRows && d.capabilities.missingRows.length
+                ? h('li', { key: 'miss', style: { fontSize: 12, color: C.dim, margin: '3px 0' } },
+                    lang.missingPrefix + d.capabilities.missingRows.join('、') + lang.missingTail)
+                : null),
+            h('div', { style: { fontSize: 10.5, color: C.dim, marginTop: 4 } }, lang.capsHint))
+        : null;
+
       const retiredNode = d.retiredList && d.retiredList.length
         ? h('details', { style: { border: '1px solid ' + C.line, borderRadius: 9, padding: '7px 9px', marginTop: 8 } },
             h('summary', { style: { cursor: 'pointer', fontSize: 12, color: C.dim } }, lang.retired + ' ' + d.retiredList.length),
@@ -232,12 +293,14 @@ window.__ModuleLoader__.load({
           String(d.headline || '') + ' · ' + String(d.at || '').replace('T', ' ').slice(0, 19)),
         grid,
         sevRow,
+        trendChart(d.trend.recent, lang),
         section(lang.issues),
         issues,
         section(lang.plan),
         h('ol', { style: { margin: 0, paddingLeft: 18 } }, planNodes),
         section(lang.advice),
         h('ul', { style: { margin: 0, paddingLeft: 18 } }, adviceNodes),
+        capsNode,
         retiredNode,
         h('div', { style: { fontSize: 10.5, color: C.dim, marginTop: 12 } }, lang.readOnly + ' · 数据缓存 60 秒'),
       );

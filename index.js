@@ -176,6 +176,20 @@ const TRIM_SCHEMA = {
   required: ['served', 'suggestions', 'summary'],
 };
 
+
+const CAPS_SCHEMA = {
+  type: 'object',
+  properties: {
+    ok: { type: 'number' },
+    redundant: { type: 'number' },
+    missing: { type: 'number' },
+    unknown: { type: 'number' },
+    rows: { type: 'array', items: { type: 'string' } },
+    summary: { type: 'string' },
+  },
+  required: ['ok', 'redundant', 'missing', 'summary'],
+};
+
 // 工具表按「每次 apply 的依赖」构建：report 落点需要会话工作区解析器，
 // 不能写成模块级闭包（那样每个宿主实例会共享同一份依赖）。
 // inject 回调拿到的是 **ctx**，服务要经 .get(name) 取。
@@ -599,6 +613,38 @@ export function buildTools(deps) {
         groups: a.groups.map((g) => g.tag + ' ×' + g.count + ' · 主力 ' + g.keep + ' · 候选 ' + (g.drop.join('、') || '无')),
         suggestions: a.suggestions,
         summary: trim.render(a),
+      };
+    },
+  },
+  {
+    name: 'audit_capabilities',
+    description: '能力域矩阵：20 个能力域各自有没有实现（有/多/无/无法判定），每个缺口给三级补救阶梯——① 先看配置 ② 再看宿主内置 ③ 最后才考虑装插件。只读',
+    parameters: {
+      type: 'object',
+      properties: {
+        scenario: { type: 'string', description: 'general|code|design|writing，缺省 general' },
+      },
+      additionalProperties: false,
+    },
+    output: {
+      schema: CAPS_SCHEMA,
+      render(_args, v) {
+        return text(v.summary);
+      },
+    },
+    execute: async (args) => {
+      const { audit } = await import('./src/engine.mjs');
+      const cm = await import('./src/capability-map.mjs');
+      const r = audit({ scenario: (args && args.scenario) || 'general' });
+      const mx = cm.buildMatrix(r.facts);
+      const b = mx.byStatus;
+      return {
+        ok: b.ok || 0,
+        redundant: b.redundant || 0,
+        missing: b.missing || 0,
+        unknown: b.unknown || 0,
+        rows: mx.rows.map((x) => x.status.padEnd(9) + ' ' + x.label + (x.count ? ' ×' + x.count : '')),
+        summary: cm.renderMatrix(mx),
       };
     },
   },

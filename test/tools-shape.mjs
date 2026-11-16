@@ -9,9 +9,10 @@ assert.ok(byName.audit_findings, 'audit_findings 缺');
 assert.ok(byName.audit_explain, 'audit_explain 缺');
 assert.ok(byName.audit_plan, 'audit_plan 缺');
 assert.ok(byName.audit_trim, 'audit_trim 缺');
+assert.ok(byName.audit_capabilities, 'audit_capabilities 缺');
 
 // 每个工具都必须声明 output.schema 与 render（宿主硬要求）
-for (const n of ['audit_findings', 'audit_explain', 'audit_plan', 'audit_trim']) {
+for (const n of ['audit_findings', 'audit_explain', 'audit_plan', 'audit_trim', 'audit_capabilities']) {
   assert.ok(byName[n].output && byName[n].output.schema, n + ' 缺 output.schema');
   assert.equal(typeof byName[n].output.render, 'function', n + ' 缺 output.render');
 }
@@ -43,4 +44,11 @@ const tm = await byName.audit_trim.execute({});
 assert.ok(Array.isArray(tm.suggestions) && tm.suggestions.length > 0, 'trim 应给建议');
 assert.equal(typeof tm.served, 'number');
 
-console.log('tools-shape: 通过（findings ' + f.total + ' / plan base ' + p.base + ' → ' + p.potentialAll + ' / trim 建议 ' + tm.suggestions.length + ' 条）');
+const cp = await byName.audit_capabilities.execute({});
+assert.equal(typeof cp.ok, 'number');
+assert.equal(typeof cp.redundant, 'number');
+assert.equal(typeof cp.missing, 'number');
+assert.ok(cp.rows.length === 20, '能力域应为 20 个，实得 ' + cp.rows.length);
+assert.ok(/装插件|阶梯/.test(cp.summary), '摘要里应有补救阶梯');
+
+console.log('tools-shape: 通过（findings ' + f.total + ' / plan ' + p.base + '→' + p.potentialAll + ' / trim ' + tm.suggestions.length + ' 条 / 能力域 ' + cp.rows.length + ' 个）');

@@ -77,6 +77,9 @@ var USAGE = [
   '  dsh-healthkit --explain <指纹或规则号>',
   '  dsh-healthkit --plan [--limit N]',
   '',
+  '能力域矩阵：',
+  '  dsh-healthkit --capabilities   20 个能力域有没有实现 + 三级补救阶梯（先在配置/内置找，最后才装插件）',
+  '',
   '装载面瘦身：',
   '  dsh-healthkit --trim            同能力多实现 / 超限 / 记忆叠放，给主备候选',
   '',
@@ -100,6 +103,17 @@ if (has('findings') || has('explain') || has('plan')) {
     else console.log(res2.summary);
     process.exit(res2 && res2.found === false ? 2 : 0);
   } catch (e) { console.error('failed: ' + e.message); process.exit(1); }
+}
+
+if (has('capabilities')) {
+  try {
+    var cmMod = await import('../src/capability-map.mjs');
+    var snap3 = audit({ scenario: arg('scenario', 'general') });
+    var mx = cmMod.buildMatrix(snap3.facts);
+    if (has('json')) console.log(JSON.stringify({ byStatus: mx.byStatus, rows: mx.rows }, null, 2));
+    else console.log(cmMod.renderMatrix(mx));
+    process.exit(0);
+  } catch (e) { console.error('capabilities failed: ' + e.message); process.exit(1); }
 }
 
 if (has('trim')) {

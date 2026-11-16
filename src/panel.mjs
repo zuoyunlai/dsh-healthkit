@@ -9,9 +9,10 @@
 //   ③ 只给分数不给原因 → 面板没用。现在每条问题带维度、证据、测得值、修法，
 //      另给「修复顺序」与「优化建议」，折叠用原生 <details>（无脚本也能展开）。
 import { audit } from './engine.mjs';
-import { stats } from './history.mjs';
+import { stats, load as loadHistory } from './history.mjs';
 import { analyze as trimAnalyze } from './trim.mjs';
 import { scan as cleanScan } from './clean.mjs';
+import { buildMatrix } from './capability-map.mjs';
 
 const PREFIX = '/dsh-healthkit-panel';
 const CACHE_MS = 60 * 1000;
@@ -135,6 +136,20 @@ export function collectSummary() {
     };
   } catch (e) { trim = null; }
 
+  // 能力域：面板只放「多实现 / 无实现」的摘要，完整矩阵走 audit_capabilities
+  let caps = null;
+  try {
+    const mx = buildMatrix(r.facts);
+    caps = {
+      ok: mx.byStatus.ok || 0,
+      redundant: mx.byStatus.redundant || 0,
+      missing: mx.byStatus.missing || 0,
+      unknown: mx.byStatus.unknown || 0,
+      redundantRows: mx.rows.filter((x) => x.status === 'redundant').map((x) => ({ label: x.label, count: x.count, plugins: x.plugins })),
+      missingRows: mx.rows.filter((x) => x.status === 'missing').map((x) => x.label),
+    };
+  } catch (e) { caps = null; }
+
   const h = stats({ days: 30 });
   const data = {
     at: new Date().toISOString(),
@@ -146,11 +161,30 @@ export function collectSummary() {
     retired: r.retired.length,
     p0: by.P0, p1: by.P1, p2: by.P2, info: by.INFO,
     headline: headlineOf(by, r.score.total, r.findings.length),
-    trend: { runs: h.runs, daysTracked: h.daysTracked, latest: h.latest, delta: h.delta, sparkline: h.sparkline || '' },
+    trend: {
+      runs: h.runs,
+      daysTracked: h.daysTracked,
+      latest: h.latest,
+      delta: h.delta,
+      sparkline: h.sparkline || '',
+      // 逐日点（按天折叠）：趋势语义，给 API / audit_trend 用。
+      series: (h.series || []).slice(-30),
+      // 按次的点：面板折线用这个。同一天里改完配置再跑一次，分数变化当天就能看见，
+      // 而按天折叠会把当天所有记录压成一条，改动的效果要等到明天。
+      recent: (() => {
+        try {
+          return loadHistory()
+            .filter((r) => typeof r.total === 'number')
+            .slice(-20)
+            .map((r) => ({ at: r.at, day: r.day, total: r.total, p0: r.p0 }));
+        } catch (e) { return []; }
+      })(),
+    },
     items,
     plan,
     clean,
     trim,
+    capabilities: caps,
     retiredList: r.retired.map((f) => ({ fp: f.fp, ruleId: f.ruleId, title: f.title || '' })),
   };
   cache = { at: now, data };
@@ -211,6 +245,35 @@ function mbOf(n) {
   return (n / 1048576).toFixed(1) + ' MB';
 }
 
+// SVG 折线：y 轴固定 0–10（不按 min/max 自适应，否则 8.3→8.4 会被画成陡坡）。
+// preserveAspectRatio=none 让线随容器宽度拉伸；non-scaling-stroke 保证线宽不被拉变形。
+function trendChart(series) {
+  const pts = (series || []).filter((p) => typeof p.total === 'number');
+  if (pts.length < 2) {
+    return '<div class="dim">只有 1 个数据点，再跑几次才有折线</div>';
+  }
+  const W = 100, H = 30, PAD = 2;
+  const x = (i) => PAD + (i / (pts.length - 1)) * (W - 2 * PAD);
+  const y = (v) => H - PAD - (Math.max(0, Math.min(10, v)) / 10) * (H - 2 * PAD);
+  const points = pts.map((p, i) => x(i).toFixed(2) + ',' + y(p.total).toFixed(2)).join(' ');
+  const ref = (v) => '<line x1="' + PAD + '" y1="' + y(v).toFixed(2) + '" x2="' + (W - PAD) + '" y2="' + y(v).toFixed(2) + '" stroke="currentColor" stroke-opacity=".18" stroke-width=".4" stroke-dasharray="2 2" vector-effect="non-scaling-stroke" />';
+  const first = pts[0], last = pts[pts.length - 1];
+  const lo = Math.min.apply(null, pts.map((p) => p.total));
+  const hi = Math.max.apply(null, pts.map((p) => p.total));
+  const stamp = (p) => String(p.at || p.day || '').slice(11, 16) || String(p.day || '').slice(5);
+  return [
+    '<svg viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none" role="img" aria-label="分数趋势" style="width:100%;height:34px;display:block;color:var(--dim)">',
+    ref(10), ref(8), ref(5),
+    '<polyline points="' + points + '" fill="none" stroke="var(--accent)" stroke-width="1.4" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke" />',
+    '</svg>',
+    '<div class="dim" style="display:flex;justify-content:space-between;font-size:11px">',
+    '<span>' + esc(stamp(first)) + ' · ' + first.total + '</span>',
+    '<span>低 ' + lo + ' / 高 ' + hi + ' · ' + pts.length + ' 次</span>',
+    '<span>' + esc(stamp(last)) + ' · ' + last.total + '</span>',
+    '</div>',
+  ].join('');
+}
+
 function findingBlock(it) {
   const rows = [];
   rows.push('<div class="kv"><b>维度</b>' + esc(it.dimension || '未分类') +
@@ -244,7 +307,7 @@ export function pageHtml(data) {
     '<div class="card"><div class="k">总分（10 分制）</div><div class="v">' + d.score + '</div><div class="row">' + sevRow + '</div></div>',
     '<div class="card"><div class="k">分档</div><div class="v">' + esc(d.band) + '</div><div class="dim">' + esc(d.headline) + '</div></div>',
     '<div class="card"><div class="k">未解决 / 已退役</div><div class="v">' + d.count + ' <small>/ ' + d.retired + '</small></div></div>',
-    '<div class="card"><div class="k">最新分 / 记账</div><div class="v">' + esc(trendTxt) + '</div><div class="dim">' + d.trend.runs + ' 次 / ' + d.trend.daysTracked + ' 天</div><div class="dim" style="font-family:ui-monospace,monospace;font-size:16px">' + esc(d.trend.sparkline || '—') + '</div></div>',
+    '<div class="card"><div class="k">最新分 / 记账</div><div class="v">' + esc(trendTxt) + '</div><div class="dim">' + d.trend.runs + ' 次 / ' + d.trend.daysTracked + ' 天</div>' + trendChart(d.trend.recent) + '</div>',
     '<div class="card"><div class="k">可清理空间</div><div class="v">' + esc(cleanTxt) + '</div><div class="dim">' + esc(cleanSub) + '</div></div>',
     '<div class="card"><div class="k">服务插件 / 上限</div><div class="v">' + esc(trimV) + '</div><div class="dim">' + esc(trimSub) + '</div></div>',
   ].join('');
@@ -288,6 +351,15 @@ export function pageHtml(data) {
   }
   if (!advice.length) advice.push('<li class="dim">暂时没有优化建议</li>');
 
+  const capsBlock = d.capabilities
+    ? '<h2>能力域（' + d.capabilities.ok + ' 有 / ' + d.capabilities.redundant + ' 多 / ' + d.capabilities.missing + ' 无）</h2><div class="card"><ul>' +
+      (d.capabilities.redundantRows.length ? d.capabilities.redundantRows.map(function (x) {
+        return '<li><b>' + esc(x.label) + '</b> · ' + x.count + ' 个实现：' + esc(x.plugins.join('、')) + '</li>';
+      }).join('') : '<li class="dim">没有多实现的域</li>') +
+      (d.capabilities.missingRows.length ? '<li class="dim">无实现：' + esc(d.capabilities.missingRows.join('、')) + '（只表示当前没有，不代表该装）</li>' : '') +
+      '</ul><div class="dim" style="margin-top:6px">每个缺口的补救阶梯用 <b>audit_capabilities</b> 看：先配置 → 再宿主内置 → 最后才装插件。</div></div>'
+    : '';
+
   const retiredBlock = d.retiredList.length
     ? '<details><summary><b>已退役 ' + d.retiredList.length + ' 条</b><span class="dim">（误报记档，不再计分）</span></summary><div class="body">' +
       d.retiredList.map(function (x) { return '<div class="kv">' + esc(x.ruleId) + ' · ' + esc(x.title) + '<div class="fp">' + esc(x.fp) + '</div></div>'; }).join('') +
@@ -306,6 +378,7 @@ export function pageHtml(data) {
     '<h2>问题清单（点开看根因与修法）</h2>' + issues,
     '<h2>修复顺序</h2><div class="card"><ol>' + planLines.join('') + '</ol></div>',
     '<h2>优化建议</h2><div class="card"><ul>' + advice.join('') + '</ul></div>',
+    capsBlock,
     retiredBlock,
     '<footer>数据来自本机 ~/.dsh；面板只读，清理与修复请走 audit_clean / CLI。每分钟自动刷新，数据缓存 60 秒。</footer>',
     '</body></html>',
