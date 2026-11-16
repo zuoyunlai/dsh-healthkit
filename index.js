@@ -100,6 +100,23 @@ const TREND_SCHEMA = {
 };
 
 
+
+const VERIFY_SCHEMA = {
+  type: 'object',
+  properties: {
+    ok: { type: 'boolean' },
+    hasPending: { type: 'boolean' },
+    at: { type: 'string' },
+    fixed: { type: 'number' },
+    stillThere: { type: 'number' },
+    muted: { type: 'number' },
+    regressions: { type: 'number' },
+    timeline: { type: 'array', items: { type: 'string' } },
+    summary: { type: 'string' },
+  },
+  required: ['ok', 'summary'],
+};
+
 const FINDINGS_SCHEMA = {
   type: 'object',
   properties: {
@@ -287,6 +304,11 @@ export function buildTools(deps) {
           const snap = await import('./src/snapshot.mjs');
           snap.writeRun(r, { home: r.facts.home, scenario: (args && args.scenario) || 'general', version: r.self.version });
         } catch (e) { /* 快照写失败不该让体检失败 */ }
+        // 写待验清单：下次宿主重启时，插件开机自动核对「上次说的该修的，修好了没、有没有搞坏别的」。
+        try {
+          const ver = await import('./src/verify.mjs');
+          ver.writePending(r, { home: r.facts.home });
+        } catch (e) { /* 待验清单写失败不该让体检失败 */ }
       }
       const by = {};
       r.findings.forEach((f) => { by[f.severity] = (by[f.severity] || 0) + 1; });
@@ -772,6 +794,71 @@ export function buildTools(deps) {
     },
   },
   {
+    name: 'audit_verify',
+    description: '跨重启验回：上次体检留下的「待修清单」，这次修好了没、有没有把别的东西搞坏（回归）。只报告不修——fixed=真修好，muted=被静音不算修好，stillThere=还在，regressions=新冒出来的 P0/P1',
+    parameters: {
+      type: 'object',
+      properties: {
+        limit: { type: 'number', description: '时间线条数，缺省 12，最大 30' },
+      },
+      additionalProperties: false,
+    },
+    output: {
+      schema: VERIFY_SCHEMA,
+      render(_args, v) {
+        return text(v.summary);
+      },
+    },
+    execute: async (args) => {
+      const { audit } = await import('./src/engine.mjs');
+      const ver = await import('./src/verify.mjs');
+      const r = audit({ scenario: 'general' });
+      const home = r.facts.home;
+      const last = ver.readLastVerify(home);
+      // 没有开机验回记录时，当场算一次（等价效果：用户现在就想核对）。
+      const v = last || ver.checkPending(r, { home });
+      const tl = ver.timeline(home, (args && args.limit) || 12);
+      const L = [];
+      if (!v || !v.hasPending) {
+        L.push('没有待验清单。');
+        L.push(v && v.note ? v.note : '（上次体检没有带修法的 P0/P1，或还没跑过体检。）');
+      } else {
+        L.push('待验清单（来自 ' + String(v.pendingAt || '').replace('T', ' ').slice(0, 19) + '，分数 ' + v.pendingScore + ' → ' + v.score + '）');
+        L.push('');
+        L.push('真修好 ' + v.fixed.length + ' 条：');
+        v.fixed.forEach((x) => L.push('  ✓ ' + x.ruleId + ' ' + x.title + '  ' + x.fp));
+        if (!v.fixed.length) L.push('  （无）');
+        L.push('还在 ' + v.stillThere.length + ' 条：');
+        v.stillThere.forEach((x) => L.push('  · ' + x.ruleId + ' ' + x.title + '  ' + x.fp));
+        if (!v.stillThere.length) L.push('  （无）');
+        L.push('被静音（**不算修好**）' + v.muted.length + ' 条：');
+        v.muted.forEach((x) => L.push('  ~ ' + x.ruleId + '  ' + x.fp));
+        if (!v.muted.length) L.push('  （无）');
+        if (v.regressions && v.regressions.length) {
+          L.push('');
+          L.push('**回归**（本次新冒出来的 P0/P1）' + v.regressions.length + ' 条：');
+          v.regressions.forEach((x) => L.push('  ! ' + x.ruleId + ' ' + x.title));
+        }
+      }
+      if (tl.length) {
+        L.push('');
+        L.push('最近几次体检的变化（新增 / 真修好 / 被静音）：');
+        tl.forEach((t) => L.push('  ' + String(t.at).replace('T', ' ').slice(5, 19) + '  分数 ' + t.score + '  +' + t.added + ' / 修 ' + t.fixed + ' / 静 ' + t.muted));
+      }
+      return {
+        ok: true,
+        hasPending: !!(v && v.hasPending),
+        at: (v && v.at) || '',
+        fixed: (v && v.fixed || []).length,
+        stillThere: (v && v.stillThere || []).length,
+        muted: (v && v.muted || []).length,
+        regressions: (v && v.regressions || []).length,
+        timeline: tl.map((t) => String(t.at).replace('T', ' ').slice(5, 19) + ' 分数 ' + t.score + ' +' + t.added + '/修' + t.fixed + '/静' + t.muted),
+        summary: L.join('\n'),
+      };
+    },
+  },
+  {
     name: 'audit_diff',
     description: '跨次差异归因：把这次体检与上一次快照对比——新增了哪些问题、真正修好了哪些、哪些只是被退役记档（不算修好）、严重度有没有变化。用于回答「我这次改动到底改善了什么」',
     parameters: {
@@ -956,14 +1043,33 @@ export function apply(ctx, config) {
     state.panel = { ok: false, reason: 'ctx.inject is not a function' };
   }
 
-  writeStatus({
-    phase: 'apply-done',
-    hookedViaInject: hooked,
-    toolsReady: state.toolsReady,
-    detectedSurfaces: state.surfaces,
-    registered,
-    failures,
-    notes,
-    panel: state.panel,
-  });
+  // ① 跨重启自证（只读版 A）：开机时核对上次体检的「待修清单」——
+  // 修好了没、有没有把别的东西搞坏。只报告，不改任何配置。
+  //
+  // apply() 是同步的，所以这里走 Promise 链（与面板挂载同一写法）。
+  // 验回失败不许影响插件加载——它是「体检器自己的额外能力」，不是插件能不能用的前提。
+  let verifyState = { hasPending: false, reason: 'pending' };
+  Promise.resolve()
+    .then(() => import('./src/engine.mjs'))
+    .then((eng) => import('./src/verify.mjs').then((ver) => ({ eng, ver })))
+    .then(({ eng, ver }) => {
+      const r0 = eng.audit({ scenario: 'general' });
+      verifyState = ver.startupVerify(r0, { home: r0.facts.home });
+    })
+    .catch((e) => { verifyState = { hasPending: false, error: msg(e) }; })
+    .then(() => {
+      writeStatus({
+        phase: 'apply-done',
+        hookedViaInject: hooked,
+        toolsReady: state.toolsReady,
+        detectedSurfaces: state.surfaces,
+        registered,
+        failures,
+        notes,
+        panel: state.panel,
+        verify: verifyState && verifyState.hasPending
+          ? { fixed: (verifyState.fixed || []).length, stillThere: (verifyState.stillThere || []).length, muted: (verifyState.muted || []).length, regressions: (verifyState.regressions || []).length }
+          : null,
+      });
+    });
 }

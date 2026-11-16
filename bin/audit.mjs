@@ -81,6 +81,9 @@ var USAGE = [
   '能力域矩阵：',
   '  dsh-healthkit --capabilities   20 个能力域有没有实现 + 三级补救阶梯（先在配置/内置找，最后才装插件）',
   '',
+  '验回与时间线：',
+  '  dsh-healthkit --verify            上次修的修好了没、有没有回归（开机自动核对过）',
+  '',
   '跨次差异：',
   '  dsh-healthkit --diff              与上一次快照比：新增 / 真修好 / 新退役 / 严重度变化',
   '',
@@ -152,6 +155,29 @@ if (has('capabilities')) {
     else console.log(cmMod.renderMatrix(mx));
     process.exit(0);
   } catch (e) { console.error('capabilities failed: ' + e.message); process.exit(1); }
+}
+
+if (has('verify')) {
+  try {
+    var verMod = await import('../src/verify.mjs');
+    var snapV = audit({ scenario: arg('scenario', 'general') });
+    var lastV = verMod.readLastVerify(snapV.facts.home);
+    var resV = lastV || verMod.checkPending(snapV, { home: snapV.facts.home });
+    if (has('json')) console.log(JSON.stringify(resV, null, 2));
+    else {
+      console.log(resV.hasPending
+        ? ('待验清单（来自 ' + String(resV.pendingAt || '').replace('T', ' ').slice(0, 19) + '）：\n  真修好 ' + resV.fixed.length + ' 条 / 还在 ' + resV.stillThere.length + ' 条 / 被静音 ' + resV.muted.length + ' 条 / 回归 ' + (resV.regressions || []).length + ' 条')
+        : (resV.note || '没有待验清单。'));
+      var tlV = verMod.timeline(snapV.facts.home, 12);
+      if (tlV.length) {
+        console.log('最近几次的变化：');
+        tlV.slice().reverse().forEach(function (t) {
+          console.log('  ' + String(t.at).replace('T', ' ').slice(5, 19) + '  分数 ' + t.score + '  新增 ' + t.added + ' / 真修好 ' + t.fixed + ' / 被静音 ' + t.muted);
+        });
+      }
+    }
+    process.exit(0);
+  } catch (e) { console.error('verify failed: ' + e.message); process.exit(1); }
 }
 
 if (has('diff')) {

@@ -37,10 +37,13 @@
 **不是插件目录**。原规划「market 数据源＝本地快照」的前提不成立。
 真要提供候选只能查 npm registry，但 §12 明确「不新增网络出站」，且 npm 侧有撞名/相似保护/peer 不匹配等实际问题。
 
-**3. 路径启发 scenarioHint（§5）— 不做**
+**3. 路径启发 scenarioHint（§5）— 不做（已实测，见 docs/SCENARIO-MEASUREMENT.md）**
 
 - 只进 ADVISORY 不计分，收益低于「手动指定一个 scenario 参数」；
-- 原规划给的判据（`package.json+src/`、`*.psd/*.fig/tokens.json`、`run/<项目>/*.md+证据包/`）是推想的，未实测。
+- 原规划给的判据（`package.json+src/`、`*.psd/*.fig/tokens.json`、`run/<项目>/*.md+证据包/`）是推想的，未实测；
+- **2026-11-16 实测：在本机 1349 个真实目录上，原判据只命中 4 个（0%），1345 个一个都不命中。**
+  本机 76% 的目录既无 package.json 也无 src/，24% 是「一堆 md」——那正是论衡与审计报告的实际形态。
+  判据描述的是理想化目录结构，不是用户的真实组织方式。
 
 **4. npx init 输出可粘贴 patch 骨架（§15 P5）— 骨架部分不做，保留 `--init`**
 

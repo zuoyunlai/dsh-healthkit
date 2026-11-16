@@ -50,6 +50,8 @@ const reqRemote = { url: '/dsh-healthkit-panel', socket: { remoteAddress: '192.1
   assert.ok(res.body.includes('<meta http-equiv="refresh"'), '应有 meta 自刷新（不用 JS）');
   assert.ok(res.body.includes('<polyline'), '应有趋势折线（需至少两个数据点）');
   assert.ok(res.body.includes('能力域'), '应有能力域段');
+  assert.ok(res.body.includes('上次修的，现在怎样了'), '应有跨重启验回段');
+  assert.ok(res.body.includes('最近几次的变化'), '应有跨次时间线段');
   assert.ok(!/https?:\/\//.test(res.body.replace(/http:\/\/127\.0\.0\.1/g, '')), 'HTML 不应有外链（离线可用）');
 }
 

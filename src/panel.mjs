@@ -13,6 +13,7 @@ import { stats, load as loadHistory } from './history.mjs';
 import { analyze as trimAnalyze } from './trim.mjs';
 import { scan as cleanScan } from './clean.mjs';
 import { buildMatrix } from './capability-map.mjs';
+import { readLastVerify, timeline as verifyTimeline } from './verify.mjs';
 
 const PREFIX = '/dsh-healthkit-panel';
 const CACHE_MS = 60 * 1000;
@@ -220,6 +221,33 @@ export function collectSummary() {
       key: x.key, label: x.label, weight: x.weight,
       score: x.score, count: x.count, cappedBy: x.cappedBy || null,
     })),
+    // ① 跨重启验回 + ③ 跨次时间线（两者都只读，来自插件自己的数据目录）
+    verify: (() => {
+      try {
+        const v = readLastVerify(r.facts.home);
+        if (!v) return { hasPending: false, note: '还没有开机验回记录（下次重启宿主会自动核对）。' };
+        return {
+          hasPending: !!v.hasPending,
+          at: v.at || '',
+          pendingAt: v.pendingAt || '',
+          score: typeof v.score === 'number' ? v.score : null,
+          pendingScore: typeof v.pendingScore === 'number' ? v.pendingScore : null,
+          fixed: (v.fixed || []).map((x) => ({ ruleId: x.ruleId, title: x.title, fp: x.fp })),
+          stillThere: (v.stillThere || []).map((x) => ({ ruleId: x.ruleId, title: x.title, fp: x.fp })),
+          muted: (v.muted || []).map((x) => ({ ruleId: x.ruleId, title: x.title, fp: x.fp })),
+          regressions: (v.regressions || []).map((x) => ({ ruleId: x.ruleId, title: x.title, fp: x.fp })),
+          note: v.note || '',
+        };
+      } catch (e) { return { hasPending: false, note: '验回记录读取失败：' + ((e && e.message) || e) }; }
+    })(),
+    timeline: (() => {
+      try {
+        return verifyTimeline(r.facts.home, 12).map((t) => ({
+          at: t.at, score: t.score, delta: t.delta,
+          added: t.added, fixed: t.fixed, muted: t.muted, kept: t.kept,
+        }));
+      } catch (e) { return []; }
+    })(),
   };
   cache = { at: now, data };
   return data;
@@ -396,6 +424,38 @@ export function pageHtml(data) {
       '</ul><div class="dim" style="margin-top:6px">每个缺口的四级补救阶梯（配置 → provider → 插件 → 习惯）用 <b>audit_capabilities</b> 看。</div></div>'
     : '';
 
+  // ① 跨重启验回：上次体检说该修的，这次修好了没、有没有把别的东西搞坏。
+  // 只报告不修——「被静音」与「真修好」分开列，否则分数上升会骗人。
+  const v = d.verify || { hasPending: false };
+  const verifyRows = [];
+  if (v.hasPending) {
+    (v.fixed || []).forEach(function (x) {
+      verifyRows.push('<li><b style="color:var(--ok)">✓ 已修好</b> ' + esc(x.ruleId) + ' ' + esc(x.title) + '<div class="fp">' + esc(x.fp) + '</div></li>');
+    });
+    (v.stillThere || []).forEach(function (x) {
+      verifyRows.push('<li><b>· 还在</b> ' + esc(x.ruleId) + ' ' + esc(x.title) + '<div class="fp">' + esc(x.fp) + '</div></li>');
+    });
+    (v.muted || []).forEach(function (x) {
+      verifyRows.push('<li><b style="color:var(--warn)">~ 被静音（不算修好）</b> ' + esc(x.ruleId) + '<div class="fp">' + esc(x.fp) + '</div></li>');
+    });
+    (v.regressions || []).forEach(function (x) {
+      verifyRows.push('<li><b style="color:var(--bad)">! 回归（本次新冒出）</b> ' + esc(x.ruleId) + ' ' + esc(x.title) + '<div class="fp">' + esc(x.fp) + '</div></li>');
+    });
+  }
+  const verifyBlock = '<h2>上次修的，现在怎样了</h2><div class="card"><ul>' +
+    (verifyRows.length ? verifyRows.join('') : '<li class="dim">' + esc(v.note || '没有待验清单（下次重启宿主会自动核对）。') + '</li>') +
+    '</ul><div class="dim" style="margin-top:6px">开机自动核对：修好了没、有没有把别的东西搞坏。**只报告，不改配置**。</div></div>';
+
+  // ③ 跨次时间线：每次体检相对上次的「新增 / 真修好 / 被静音」。
+  const tl = d.timeline || [];
+  const timelineBlock = tl.length
+    ? '<h2>最近几次的变化</h2><div class="card"><ul>' + tl.slice().reverse().map(function (t) {
+        return '<li>' + esc(fmtLocal(t.at)) + ' · 分数 ' + num(t.score, 2) +
+          '（' + (t.delta > 0 ? '+' : '') + num(t.delta, 2) + '）· 新增 ' + t.added +
+          ' / 真修好 ' + t.fixed + ' / 被静音 ' + t.muted + ' · 持续 ' + t.kept + '</li>';
+      }).join('') + '</ul></div>'
+    : '<h2>最近几次的变化</h2><div class="card"><div class="dim">至少跑两次体检才有可比的变化（第一次是基线）。</div></div>';
+
   const retiredBlock = d.retiredList.length
     ? '<details><summary><b>已退役 ' + d.retiredList.length + ' 条</b><span class="dim">（误报记档，不再计分）</span></summary><div class="body">' +
       d.retiredList.map(function (x) { return '<div class="kv">' + esc(x.ruleId) + ' · ' + esc(x.title) + '<div class="fp">' + esc(x.fp) + '</div></div>'; }).join('') +
@@ -415,6 +475,8 @@ export function pageHtml(data) {
     '<h2>修复顺序</h2><div class="card"><ol>' + planLines.join('') + '</ol></div>',
     '<h2>优化建议</h2><div class="card"><ul>' + advice.join('') + '</ul></div>',
     capsBlock,
+    verifyBlock,
+    timelineBlock,
     retiredBlock,
     '<footer>数据来自本机 ~/.dsh；面板只读，清理与修复请走 audit_clean / CLI。每分钟自动刷新，数据缓存 60 秒。</footer>',
     '</body></html>',

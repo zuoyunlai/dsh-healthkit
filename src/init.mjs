@@ -61,7 +61,7 @@ export function inspect(home) {
     out.steps.push('已装但未挂载：把 "dsh-healthkit" 加进 profile package.json 的 dsh.profile.bundles');
   }
   if (out.ready) {
-    out.steps.push('已就绪：重启宿主后，工具面会出现 audit_run / audit_report / audit_clean / audit_trend / audit_findings / audit_explain / audit_plan / audit_trim / audit_capabilities / audit_retire / audit_diff（共 11 个）');
+    out.steps.push('已就绪：重启宿主后，工具面会出现 audit_run / audit_report / audit_clean / audit_trend / audit_findings / audit_explain / audit_plan / audit_trim / audit_capabilities / audit_retire / audit_diff / audit_verify（共 12 个）');
     out.steps.push('先跑一次基线：audit_report（报告落在会话工作区）');
   }
   return out;

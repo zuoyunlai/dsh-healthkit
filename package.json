@@ -1,6 +1,6 @@
 {
   "name": "dsh-healthkit",
-  "version": "0.9.0",
+  "version": "0.10.0",
   "type": "module",
   "license": "MIT",
   "repository": {
@@ -55,7 +55,7 @@
   ],
   "scripts": {
     "audit": "node ./bin/audit.mjs",
-    "test": "node ./test/rules-on-fixture.mjs && node ./test/invariants.mjs && node ./test/reportpath.mjs && node ./test/version-guard.mjs && node ./test/migrate-guard.mjs && node ./test/tools-shape.mjs && node ./test/panel.mjs && node ./test/apply-inject.mjs && node ./test/capability-map.mjs && node ./test/false-positive-zone.mjs && node ./test/degradation.mjs && node ./test/snapshot.mjs && node ./test/portability.mjs && node ./test/r22-local-deps.mjs"
+    "test": "node ./test/rules-on-fixture.mjs && node ./test/invariants.mjs && node ./test/reportpath.mjs && node ./test/version-guard.mjs && node ./test/migrate-guard.mjs && node ./test/tools-shape.mjs && node ./test/panel.mjs && node ./test/apply-inject.mjs && node ./test/capability-map.mjs && node ./test/false-positive-zone.mjs && node ./test/degradation.mjs && node ./test/snapshot.mjs && node ./test/portability.mjs && node ./test/r22-local-deps.mjs && node ./test/verify.mjs"
   },
   "dsh": {
     "bundle": {

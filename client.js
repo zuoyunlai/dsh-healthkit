@@ -41,6 +41,13 @@ window.__ModuleLoader__.load({
         fixes: '修复收益（互不叠加）',
         dimsHead: '维度分', dimsHint: '权重 {w}%',
         lowest: '最低 {a}',
+        verifyTitle: '上次修的，现在怎样了',
+        verifyFixed: '已修好', verifyStill: '还在', verifyMuted: '被静音（不算修好）', verifyRegress: '回归（本次新冒出）',
+        verifyHint: '开机自动核对：修好了没、有没有把别的东西搞坏。只报告，不改配置。',
+        verifyNone: '没有待验清单（下次重启宿主会自动核对）。',
+        timelineTitle: '最近几次的变化',
+        timelineHint: '至少跑两次体检才有可比的变化（第一次是基线）。',
+        timelineRow: '新增 {a} / 真修好 {b} / 被静音 {c}',
       },
       en: {
         title: 'Checkup', refresh: 'Refresh', loading: 'Loading…', retry: 'Retry', error: 'Panel error: ',
@@ -55,6 +62,13 @@ window.__ModuleLoader__.load({
         basedOn: 'baseline {v}', fixTiny: 'Every single fix is worth < 0.05 — no bars to draw',
         caps: 'Capabilities', noRedundant: 'No gaps',
         capsHint: 'Four-step ladder via audit_capabilities: config → provider → plugin → habit',
+        verifyTitle: 'What happened to last time',
+        verifyFixed: 'Fixed', verifyStill: 'Still there', verifyMuted: 'Muted (not fixed)', verifyRegress: 'Regressed',
+        verifyHint: 'Checked at boot: fixed? anything broken? Reports only, never edits.',
+        verifyNone: 'No pending list (the next host restart will check).',
+        timelineTitle: 'Recent changes',
+        timelineHint: 'Needs at least two runs to compare (the first is the baseline).',
+        timelineRow: '+{a} / fixed {b} / muted {c}',
         stable: 'Steady at {a}–{b} over {n} runs',
         infoGroup: '{n} more INFO findings (not scored)',
         scored: '{a} scored / {b} total',
@@ -692,6 +706,45 @@ window.__ModuleLoader__.load({
             h('div', { style: { fontSize: FS.tiny, color: C.dim, marginTop: 4 } }, lang.capsHint))
         : null;
 
+      // ① 跨重启验回：修好了没 / 还在 / 被静音（不算修好）/ 回归。
+      // 四个状态分开列——分数上升可能来自「被静音」而非「真修好」。
+      const vf = d.verify || { hasPending: false };
+      const vRows = [];
+      (vf.fixed || []).forEach(function (x, i) {
+        vRows.push(h('div', { key: 'fx' + i, style: { fontSize: FS.body, margin: '3px 0', color: C.fg } },
+          h('b', { style: { color: C.ok } }, '✓ ' + lang.verifyFixed + ' '), x.ruleId + ' ', x.title));
+      });
+      (vf.stillThere || []).forEach(function (x, i) {
+        vRows.push(h('div', { key: 'st' + i, style: { fontSize: FS.body, margin: '3px 0', color: C.fg } },
+          h('b', null, '· ' + lang.verifyStill + ' '), x.ruleId + ' ', x.title));
+      });
+      (vf.muted || []).forEach(function (x, i) {
+        vRows.push(h('div', { key: 'mu' + i, style: { fontSize: FS.body, margin: '3px 0', color: C.warn } },
+          h('b', null, '~ ' + lang.verifyMuted + ' '), x.ruleId));
+      });
+      (vf.regressions || []).forEach(function (x, i) {
+        vRows.push(h('div', { key: 'rg' + i, style: { fontSize: FS.body, margin: '3px 0', color: C.bad } },
+          h('b', null, '! ' + lang.verifyRegress + ' '), x.ruleId + ' ', x.title));
+      });
+      const verifyNode = h('div', null,
+        section(lang.verifyTitle),
+        vRows.length
+          ? h('div', null, vRows)
+          : h('div', { style: { fontSize: FS.body, color: C.dim } }, lang.verifyNone),
+        h('div', { style: { fontSize: FS.tiny, color: C.dim, marginTop: 4 } }, lang.verifyHint));
+
+      // ③ 跨次时间线：每次体检相对上次的「新增 / 真修好 / 被静音」。
+      const tl = d.timeline || [];
+      const timelineNode = h('div', null,
+        section(lang.timelineTitle),
+        tl.length
+          ? h('div', null, tl.slice().reverse().map(function (t, i) {
+              return h('div', { key: 't' + i, style: { fontSize: FS.body, margin: '3px 0', color: C.fg } },
+                stamp({ at: t.at }) + ' · ' + fmt(t.score, 2) +
+                ' · ' + String(lang.timelineRow).replace('{a}', String(t.added)).replace('{b}', String(t.fixed)).replace('{c}', String(t.muted)));
+            }))
+          : h('div', { style: { fontSize: FS.body, color: C.dim } }, lang.timelineHint));
+
       const retiredNode = d.retiredList && d.retiredList.length
         ? h('details', {
           style: {
@@ -738,6 +791,8 @@ window.__ModuleLoader__.load({
         section(lang.advice),
         h('ul', { style: { margin: 0, paddingLeft: 16 } }, adviceNodes),
         capsNode,
+        verifyNode,
+        timelineNode,
         retiredNode,
         h('div', { style: { fontSize: FS.tiny, color: C.dim, marginTop: 12 } }, lang.readOnly + ' · 数据缓存 60 秒'),
       );
