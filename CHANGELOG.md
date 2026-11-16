@@ -1,5 +1,9 @@
 # CHANGELOG
 
+## 0.4.2 — 2026-11-16
+
+- 命令名跟上包名：`bin` 从 `dsh-auditkit` 改为 `dsh-healthkit`（0.4.1 只改了包名，忘了改 bin 键，装完敲的仍是旧命令名）。
+
 ## 0.4.1 — 2026-11-16
 
 **包名定为 `dsh-healthkit`**（显示名仍是「DSH 体检」）。改名原因：npm 拒绝 `dsh-auditkit` ——
