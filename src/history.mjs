@@ -12,6 +12,9 @@ import { dshHome, readJson } from './util.mjs';
 import { dataDir } from './paths.mjs';
 
 const MAX_RECORDS = 2000;
+// 每 N 次记账才做一次「是否越界」检查（见 C5 注释）。
+const TRIM_EVERY = 20;
+let appendsSinceTrim = 0;
 const BARS = '▁▂▃▄▅▆▇█';
 
 export function historyPath() { return path.join(dataDir(), 'history.jsonl'); }
@@ -55,7 +58,9 @@ export function append(result, opts) {
     const p = historyPath();
     fs.mkdirSync(path.dirname(p), { recursive: true });
     fs.appendFileSync(p, JSON.stringify(rec) + '\n', 'utf8');
-    trim();
+    // C5：trim() 要整文件读回，2000 条时每次记账都多一次全文 IO。
+    // 改成每 20 次记账才检查一次（越界后冗余 ≤19 行，可忽略）。
+    if (++appendsSinceTrim >= TRIM_EVERY) { appendsSinceTrim = 0; trim(); }
   } catch (e) { /* 记账失败不该让体检失败 */ }
   return rec;
 }

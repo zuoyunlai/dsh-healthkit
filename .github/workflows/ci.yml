@@ -1,0 +1,26 @@
+# push/PR 门禁（架构审计 C1）。
+#
+# 原来只有 publish.yml（on: push: tags: v*）——`npm test` 要等 tag 已经推上去、
+# 准备发布的时候才跑；那时测试红了，tag 已经在了。这里补一道前置门禁。
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [20, 22]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      # 测试全部跑在临时 HOME 上（test/testenv.mjs），不需要真实 DSH 安装
+      - run: npm test

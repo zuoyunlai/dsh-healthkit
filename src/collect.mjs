@@ -5,16 +5,34 @@ import { inspectWorkspace } from './workspace.mjs';
 import { tagProfile, redundancy } from './capabilities.mjs';
 
 export function collect(ctxOpts) {
+  var opts = ctxOpts || {};
   var home = dshHome();
   var yaml = loadYaml(home);
-  var facts = { home: home, collectedAt: new Date().toISOString(), yamlAvailable: !!yaml, profiles: [], patchEntries: {}, exclusions: {}, costTracker: null, disk: [], engineAssets: [], logs: {}, vcs: false, machines: null };
+  var facts = { home: home, collectedAt: new Date().toISOString(), yamlAvailable: !!yaml, profiles: [], profileErrors: [], patchEntries: {}, exclusions: {}, costTracker: null, disk: [], engineAssets: [], logs: {}, vcs: false, machines: null };
 
   var profNames = listDirs(path.join(home, 'profiles'));
   for (var i = 0; i < profNames.length; i++) {
     var name = profNames[i];
     var dir = path.join(home, 'profiles', name);
-    var pkg = readJson(path.join(dir, 'package.json'), null);
-    if (!pkg) continue;
+    var pkgPath = path.join(dir, 'package.json');
+    var pkg = readJson(pkgPath, null);
+    if (!pkg) {
+      // 2026-11-17 修（架构审计 P0-A2）：原来这里是一句 `continue`，于是「目录存在但
+      // package.json 坏了」的 profile 会**整条从体检里消失**，报告照旧给高分——
+      // 体检器把「坏了」报成「没有」是它最不能犯的错。
+      // 但 profiles/ 下也可能只是残留空目录，不能一律当问题：
+      //   · package.json 存在却解析失败 → parse-error（必须报）
+      //   · 没有 package.json 但有 node_modules → missing-package-json（像个 profile，必须报）
+      //   · 两者都没有 → 不是 profile，静默跳过
+      var hasNodeModules = exists(path.join(dir, 'node_modules'));
+      if (exists(pkgPath) || hasNodeModules) {
+        facts.profileErrors.push({
+          name: name, dir: dir,
+          reason: exists(pkgPath) ? 'parse-error' : 'missing-package-json',
+        });
+      }
+      continue;
+    }
     var bundles = (pkg.dsh && pkg.dsh.profile && pkg.dsh.profile.bundles) || [];
     var deps = Object.keys(pkg.dependencies || {});
     var depSpecs = pkg.dependencies || {};
@@ -38,6 +56,15 @@ export function collect(ctxOpts) {
     var excl = null;
     if (wsText && yaml) { try { var ws = yaml.parse(wsText); excl = ws.minimumReleaseAgeExclude || []; } catch (e) { excl = null; } }
     facts.exclusions[name] = excl;
+    // 架构审计 B2：豁免项「对应哪个已安装版本」属于文件系统事实，必须在采集层定下来。
+    // 原来规则层自己去读 node_modules/<pkg>/package.json，那条路径夹具永远盖不到。
+    var installedExclusions = {};
+    for (var xe = 0; xe < (Array.isArray(excl) ? excl.length : 0); xe++) {
+      var xm = String(excl[xe]).match(/^(@?[^@]+)@(.+)$/);
+      if (!xm) continue;
+      var xv = readJson(path.join(dir, 'node_modules', xm[1], 'package.json'), null);
+      installedExclusions[xm[1]] = xv ? xv.version : null;
+    }
     // file:/link: 依赖的目标是否存在——**在采集阶段判定**（涉及真实文件系统，
     // 平台相关）。规则层只读事实，这样夹具在任何机器上结论一致。
     var localDeps = [];
@@ -65,7 +92,7 @@ export function collect(ctxOpts) {
         var j = readJson(path.join(dir, 'node_modules', d, 'package.json'), null);
         return !!(j && (j.dsh || /dsh-/i.test(j.name || d)));
       }),
-      depsNotBundledRaw: notBundledRaw, installed: installed, depSpecs: depSpecs, localDeps: localDeps,
+      depsNotBundledRaw: notBundledRaw, installed: installed, depSpecs: depSpecs, localDeps: localDeps, installedExclusions: installedExclusions,
       bakFiles: listFiles(dir).filter(function (f) { return /[.]bak/.test(f); }),
       patchBytes: patchText ? patchText.length : 0
     });
@@ -102,12 +129,20 @@ export function collect(ctxOpts) {
     var w = walk(dp, { maxDepth: 5 });
     facts.disk.push({ name: topDirs[t], bytes: w.bytes, files: w.files, oldestAgeDays: daysAgo(w.oldest), truncated: w.truncated });
     if (w.files > 0 && w.bytes > 0) {
+      // C2：标记文件名取 allowlist.engineAssetMarkers（原来这里硬编码 provenance.json，
+      // 配置项存在却从不被读——正是 V06 那种「配置是空壳」的同类复发）。
+      var markers = (opts && Array.isArray(opts.engineAssetMarkers) && opts.engineAssetMarkers.length)
+        ? opts.engineAssetMarkers : ['provenance.json'];
       var sub = listDirs(dp);
       for (var s = 0; s < sub.length; s++) {
         var sp = path.join(dp, sub[s]);
-        if (exists(path.join(sp, 'provenance.json'))) {
+        var hitMarker = null;
+        for (var mi = 0; mi < markers.length; mi++) {
+          if (exists(path.join(sp, markers[mi]))) { hitMarker = markers[mi]; break; }
+        }
+        if (hitMarker) {
           var inner0 = listDirs(sp);
-          facts.engineAssets.push({ top: topDirs[t], path: sp, hashSubdirs: inner0.length, marker: 'provenance.json' });
+          facts.engineAssets.push({ top: topDirs[t], path: sp, hashSubdirs: inner0.length, marker: hitMarker });
           continue;
         }
         var inner1 = listDirs(sp);

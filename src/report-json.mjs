@@ -12,11 +12,7 @@
 //   { ok, contract, checks[], doctor:{...}, target:{...} }
 // 差别只在本插件的 check 条目来自体检发现，而不是 doctor 的静态扫描。
 
-import { runRules } from './rules.mjs';
-import { score } from './score.mjs';
-import { attribution } from './score.mjs';
 import { buildMatrix } from './capability-map.mjs';
-import { readJson } from './util.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
 

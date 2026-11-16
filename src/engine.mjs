@@ -1,6 +1,7 @@
 import path from 'node:path';
 import fs from 'node:fs';
 import { collect } from './collect.mjs';
+import { cachedCollect } from './cache.mjs';
 import { runRules } from './rules.mjs';
 import { score } from './score.mjs';
 import { renderReport } from './report.mjs';
@@ -15,7 +16,7 @@ export function saveRetirements(home, store) {
   fs.writeFileSync(p, JSON.stringify(store, null, 2) + '\n', 'utf8');
 }
 
-import { attribution } from './score.mjs';
+import { attribution, validateRubric } from './score.mjs';
 import { latestRun, diffRuns } from './snapshot.mjs';
 
 // 账本行数：self 段用。读不到就返回 null（不抛，体检器自己出问题不该影响体检结论）。
@@ -37,7 +38,11 @@ export function audit(opts) {
   var rubric = readJson(path.join(cfgDir, 'rubric.json'), null);
   var allowlist = readJson(path.join(cfgDir, 'allowlist.json'), {});
   if (!rubric) throw new Error('rubric.json missing');
-  var facts = collect(opts || {});
+  // 架构审计 B4：同一进程里 13 个工具各跑一遍全量采集太贵（每次 ~1s / 1.2 万次系统调用）。
+  // 只有 facts 走缓存，评分/退役/快照仍然现算；opts.fresh=true 可绕过。
+  var facts = cachedCollect(Object.assign({}, opts || {}, {
+    engineAssetMarkers: Array.isArray(allowlist.engineAssetMarkers) ? allowlist.engineAssetMarkers : null,
+  }));
   var findings = runRules(facts, allowlist);
   var store = opts.skipRetire ? {} : loadRetirements(facts.home);
   var kept = [], retired = [];
@@ -57,6 +62,18 @@ export function audit(opts) {
     retiredCount: retired.length,
     notes: [],
   };
+  // 架构审计 B1：rubric 是评分的输入，写错一个字就会静默改变对外承诺。
+  // 自检结果进 self.notes（不进评分），让「分数不对」有据可查。
+  try {
+    validateRubric(rubric).forEach(function (m) { self.notes.push('rubric 自检：' + m); });
+    if (sc.dropped && sc.dropped.dimension.length) {
+      self.notes.push('有 ' + sc.dropped.dimension.length + ' 条问题的 dimension 不在 rubric 里，已丢弃：' + sc.dropped.dimension.join(','));
+    }
+    if (sc.dropped && sc.dropped.severity.length) {
+      self.notes.push('有 ' + sc.dropped.severity.length + ' 条问题的 severity 不在 penalty 表里（按 0 罚）：' + sc.dropped.severity.join(','));
+    }
+    if (sc.unknownScenario) self.notes.push('scenario「' + (opts.scenario || 'general') + '」不在 rubric.scenarios 里，权重按默认口径。');
+  } catch (e) { self.notes.push('rubric 自检失败：' + ((e && e.message) || e)); }
   try {
     var hist = require_history(facts.home);
     self.historyRuns = hist;

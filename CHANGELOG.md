@@ -1,5 +1,49 @@
 # CHANGELOG
 
+## 未发布 — 架构审计反哺批（P0×2 · P1×7 · P2×5 全部落地）
+
+> 依据 `docs/FIXLOG-2026-11-17.md`（逐条修前/修后实测台账）。
+> 架构评分 6.4/10「需治理」；本轮不改评分口径、不改版本号、未发版。
+
+### 修：两条会动数据/骗人的静默路径（P0）
+
+- **A1 清理护栏对「终段同名目录」失效**：正则写成 `\$`（转义的字面美元号，不是结尾锚点），
+  实测 `C:/_backup/node_modules` 直接通过——恰恰是它唯一要保护的情形；且护栏零测试。
+  改用真锚点并把名单抽成 `PROTECTED_NAMES`；`purge()` 增二次校验（清单含受保护路径整批拒绝）。
+  新增 `test/clean-guard.mjs`（8 名 × 3 位置 + 形近名 + purge，33 断言）。
+- **A2 坏 profile 静默消失**：`collect` 里 `if (!pkg) continue;` 让 package.json 解析失败的 profile
+  整条从体检里消失、零发现、报告照旧高分。改为记 `facts.profileErrors[]` + 新规则 **R24**
+  （reliability/P0/MEASURED），P0 封顶随之生效。新增 `test/profile-errors.mjs`（13 断言）。
+
+### 改：性能与启动噪声（P1）
+
+- **事实缓存**（新 `src/cache.mjs`）：三次连续 audit **1016/854/933ms → 1051/18/19ms**。
+  只缓存 facts，评分/退役/快照仍现算；指纹含 profile 目录与 package.json、cordis*.yml 的 mtime，
+  改配置自动失效；`opts.fresh` 与 `DSH_HEALTHKIT_NO_CACHE=1` 两条旁路。面板缓存 60s→55s（落在引擎缓存热区）。
+- **启动惰性验回**：`pending-verify.json` 无 targets 时不再跑全量体检（本机实测 targets 为空却每次开机扫盘）。
+
+### 改：评分与分层契约（P1）
+
+- **rubric 自检**（`validateRubric`）：caps.when 白名单、维度 key 唯一、bands 严格降序、
+  dimensionCaps 单调、penalty 三档齐。修前实测「caps 少两个空格 ⇒ 同一组 findings 从 5.0 变 9.6」；
+  现在自检结果进 `self.notes` 并渲染进报告的「备注」。未知维度/严重度进 `score().dropped`，不再静默。
+- **规则层不再读文件系统**：`installedExclusions` 改由采集层给出，`machines` 回退删除；
+  `rules.mjs` 现在零 `fs.`/`readJson`（`test/layering.mjs` 守门）。
+- **面板 payload 契约**：加 `schema: dsh-healthkit/panel/v1` + 必需键 assert + `bands` 下发；
+  client 不再硬编码 8.5/7/5 阈值（`test/panel-contract.mjs`）。
+
+### 改：测试与门禁（P1/P2）
+
+- 删掉两条**恒真断言**（`r.findings.length >= 0`、`f.measured.engineAsset === true` 该字段不存在），
+  换成 advisory 不许进评分、R17 verdict 与 `facts.engineAssets` 对账。
+- 新增 `test/score.mjs`（罚分/折扣/维度封顶/P0封顶/丢弃项/rubric自检/归因，23 断言）——
+  评分数学第一次有直测。
+- 新增 `.github/workflows/ci.yml`：push main / PR 跑 `npm test`（node 20+22）。
+  原来只有 `publish.yml`，测试要等 tag 推上去才跑。
+- `tools-shape` 覆盖 10 → **14** 个工具；`verify` 改用 `runsDir()`；`history.trim()` 每 20 次记账才检查。
+- 死配置接上：`allowlist.engineAssetMarkers` 进 collect 判据；删死导出 `snapshotsDir` 与 `report-json` 4 个未用 import；
+  `layering` 新增「allowlist 每键必须被引用」守门。
+
 ## 0.11.1 — 2026-11-16
 
 ### 修：宿主重复触发 inject 回调时，面板会挂两遍

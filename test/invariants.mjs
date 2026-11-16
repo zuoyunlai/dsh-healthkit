@@ -19,8 +19,16 @@ function ok(name, cond, detail) {
 var r = audit({ scenario: 'general' });
 var adv = r.findings.filter(function (f) { return f.advisory === true; });
 
+// 修前这条恒真：R17 的 measured 里从来没有 engineAsset 字段（只有 verdict/dir），
+// 所以 bad 恒为空、断言恒 PASS。改成拿 verdict 与 facts.engineAssets 对账。
+var engineDirs = (r.facts.engineAssets || []).map(function (a) { return a && (a.top || a.name || a.dir); }).filter(Boolean);
+function isEngineAsset(dir) { return !!dir && engineDirs.indexOf(dir) !== -1; }
 var bad = r.findings.filter(function (f) {
-  return f.ruleId === 'R17' && f.measured && f.measured.engineAsset === true && f.measured.verdict !== 'ENGINE_ASSET_NO_RECLAIM';
+  if (f.ruleId !== 'R17' || !f.measured) return false;
+  var v = f.measured.verdict;
+  if (v === 'ENGINE_ASSET_NO_RECLAIM') return !isEngineAsset(f.measured.dir);   // 声称是引擎资产却查无此物
+  if (v === 'RECLAIM_CANDIDATE') return isEngineAsset(f.measured.dir);           // 声称可回收却其实是引擎资产
+  return false;
 });
 ok('engine-asset-not-reclaimable', bad.length === 0, bad.length ? JSON.stringify(bad.map(function (b) { return b.title; })) : '');
 
@@ -33,7 +41,11 @@ ok('every-finding-has-fingerprint', noFp.length === 0);
 
 ok('p0-requires-cap-reason', r.score.p0Open === 0 || !!r.score.capReason, 'P0=' + r.score.p0Open);
 
-ok('advisory-separated', r.findings.length >= 0 && adv.length >= 0, 'advisory=' + adv.length);
+// 修前 `adv.length >= 0` 恒真。真断言：advisory 项一条都不许进评分维度。
+var dimItems = [];
+r.score.dims.forEach(function (d) { dimItems = dimItems.concat(d.items || []); });
+var leakedAdv = adv.filter(function (f) { return dimItems.indexOf(f.ruleId) !== -1; });
+ok('advisory-separated', leakedAdv.length === 0, 'advisory=' + adv.length + (leakedAdv.length ? ' leaked=' + leakedAdv.map(function (f) { return f.ruleId; }).join(',') : ''));
 
 // 审计反哺 V10：报告必须有跨次对比段（无基线时也要注明「本次为基线」）。
 ok('report-has-crossrun', /跨次对比/.test(r.report), '');

@@ -14,7 +14,9 @@ export function runsDir(home) {
   return path.join(dataDir(home), 'runs');
 }
 
-export function snapshotsDir(home) {
+// 说明：snapshotsDir 曾是「快照目录」的别名，全仓无人引用（架构审计 C2）。
+// 保留实现但不再 export，避免调用方误以为这是目录真源（真源是 runsDir）。
+function snapshotsDir(home) {
   return path.join(dataDir(home), 'snapshots');
 }
 

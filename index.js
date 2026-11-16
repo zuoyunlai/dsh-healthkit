@@ -15,7 +15,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { resolveReportPath } from './src/reportpath.mjs';
-import { dataDir, migrateLegacyDataDir } from './src/paths.mjs';
+import { dataDir, migrateLegacyDataDir, dshHome } from './src/paths.mjs';
 
 export const name = 'dsh-healthkit';
 
@@ -482,7 +482,12 @@ export function buildTools(deps) {
       if (a === 'purge') {
         const r = purge({ olderThanDays: (args && args.olderThanDays) || 7, dryRun: !!(args && args.dryRun) });
         const n = r.dryRun ? r.candidates.length : r.purged.length;
-        const s = (r.dryRun ? '预演：将永久删除 ' : '已永久删除 ') + n + ' 个批次，' + fmtBytes(r.bytes);
+        let s = (r.dryRun ? '预演：将永久删除 ' : '已永久删除 ') + n + ' 个批次，' + fmtBytes(r.bytes);
+        // 护栏二次校验拦下的批次必须报出来，否则「少删了」会被当成删干净了。
+        if (r.refused && r.refused.length) {
+          s += '\n拒绝 ' + r.refused.length + ' 个批次（清单含受保护路径，不解封）：\n' +
+            r.refused.map((x) => x.batch + ' · ' + x.path).join('\n');
+        }
         return { action: 'purge', ok: true, freedBytes: r.bytes, moved: n, dryRun: !!r.dryRun, batch: '', summary: s };
       }
       return { action: String(a), ok: false, freedBytes: 0, moved: 0, dryRun: true, batch: '', summary: '未知 action：' + a + '（preview|apply|restore|list|purge）' };
@@ -1190,6 +1195,13 @@ export function apply(ctx, config) {
     .then(() => import('./src/engine.mjs'))
     .then((eng) => import('./src/verify.mjs').then((ver) => ({ eng, ver })))
     .then(({ eng, ver }) => {
+      // 架构审计 B3：先看看有没有待验目标。本机实测 pending-verify.json 的 targets 就是 []，
+      // 却为此付了一次全盘扫描——顺手把「开机变慢」这笔噪声归零。
+      const home = dshHome();
+      if (!ver.hasPendingTargets(home)) {
+        verifyState = { hasPending: false, reason: 'no-targets' };
+        return;
+      }
       const r0 = eng.audit({ scenario: 'general' });
       verifyState = ver.startupVerify(r0, { home: r0.facts.home });
     })

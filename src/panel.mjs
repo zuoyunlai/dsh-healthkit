@@ -16,7 +16,18 @@ import { buildMatrix } from './capability-map.mjs';
 import { readLastVerify, timeline as verifyTimeline } from './verify.mjs';
 
 const PREFIX = '/dsh-healthkit-panel';
-const CACHE_MS = 60 * 1000;
+
+// B5：面板 payload 是唯一高频变更的面，却没有契约（report/check 都有 /v1）。
+// 这里给它一个版本串 + 必需键集；字段改名会立刻被面板测试挡住，而不是面板静默变空白。
+export const PANEL_SCHEMA = 'dsh-healthkit/panel/v1';
+export const PANEL_REQUIRED_KEYS = [
+  'schema', 'at', 'score', 'raw', 'band', 'bands', 'count', 'retired',
+  'p0', 'p1', 'p2', 'info', 'headline', 'trend', 'items', 'plan', 'clean', 'trim', 'capabilities', 'dims',
+];
+
+// 略短于引擎的事实缓存 TTL（cache.mjs 的 60s）：页面的 60 秒自刷新每次都落在
+// 引擎缓存还热的时候，不会变成「每分钟一次全盘扫描」。
+const CACHE_MS = 55 * 1000;
 const SEV_ORDER = { P0: 0, P1: 1, P2: 2, INFO: 3 };
 
 // 数值兜底：评分链出问题时不要印 "NaN"。2026-11-16 实测：重复挂载的旧实例算出
@@ -179,10 +190,12 @@ export function collectSummary() {
 
   const h = stats({ days: 30 });
   const data = {
+    schema: PANEL_SCHEMA,
     at: new Date().toISOString(),
     score: r.score.total,
     raw: r.score.raw,
     band: r.score.band,
+    bands: r.score.bands || [],
     count: r.findings.length,
     findings: r.findings.length, // 兼容旧字段
     retired: r.retired.length,
@@ -249,6 +262,9 @@ export function collectSummary() {
       } catch (e) { return []; }
     })(),
   };
+  // 契约自检：改字段名的人在生产端就撞墙，而不是等用户看到面板变空白。
+  const missing = PANEL_REQUIRED_KEYS.filter((k) => !(k in data));
+  if (missing.length) throw new Error('panel payload 缺字段：' + missing.join(','));
   cache = { at: now, data };
   return data;
 }

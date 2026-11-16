@@ -18,15 +18,19 @@ const MIN_AGE_DAYS = 14;
 const PURGE_AFTER_DAYS = 7;
 const INDEX_STALE_HOURS = 48;
 
+// 护栏：这些名字一律不许被搬进回收区、也不许从回收区永久删除。
+//
+// 2026-11-17 修（架构审计 P0-A1）：原写法是 `[\\/]name([\\/]|\$)`，
+// 而 `\$` 在正则字面量里是**转义的字面美元号**，不是结尾锚点。于是
+// 「路径终段就是受保护名」这种最该拦的情形全部漏过——实测
+// `C:/_backup/node_modules` 直接通过，只有 `.../node_modules/xxx` 才被挡。
+// 改成真锚点 `(^|[\\/])` + `([\\/]|$)`，并把名单抽出来给测试遍历。
+export const PROTECTED_NAMES = [
+  'node_modules', 'sessions', 'attachments', 'skills',
+  'data', 'storages', 'llm-deepseek', '.git',
+];
 const FORBIDDEN = [
-  /[\\/]node_modules([\\/]|\$)/i,
-  /[\\/]sessions([\\/]|\$)/i,
-  /[\\/]attachments([\\/]|\$)/i,
-  /[\\/]skills([\\/]|\$)/i,
-  /[\\/]data([\\/]|\$)/i,
-  /[\\/]storages([\\/]|\$)/i,
-  /[\\/]llm-deepseek([\\/]|\$)/i,
-  /[\\/]\.git([\\/]|\$)/i,
+  /(^|[\\/])(node_modules|sessions|attachments|skills|data|storages|llm-deepseek|\.git)([\\/]|$)/i,
   /credentials/i,
 ];
 
@@ -46,7 +50,8 @@ function insideHome(p) {
   return r !== home && r.indexOf(home + path.sep) === 0;
 }
 
-function forbidden(p) {
+export function forbidden(p) {
+  if (!p || typeof p !== 'string') return null;
   for (let i = 0; i < FORBIDDEN.length; i++) if (FORBIDDEN[i].test(p)) return FORBIDDEN[i].toString();
   return null;
 }
@@ -262,12 +267,27 @@ export function purge(opts) {
   const o = opts || {};
   const olderThan = Number.isFinite(o.olderThanDays) ? o.olderThanDays : PURGE_AFTER_DAYS;
   const victims = listBatches().filter((b) => b.ageDays !== null && b.ageDays >= olderThan);
-  if (o.dryRun) return { ok: true, dryRun: true, purged: [], candidates: victims.map((v) => v.batch), bytes: victims.reduce((a, v) => a + v.bytes, 0) };
-  const purged = [];
+  // 二次校验：purge 是唯一不可逆的一步。清单里只要有一项原始路径命中护栏，
+  // 整个批次拒绝删除（护栏漏过的历史批次就靠这一层兜住），并如实报出来。
+  const candidates = [];
+  const refused = [];
   for (const v of victims) {
+    const m = readJson(path.join(trashDir(), v.batch, 'manifest.json'), null);
+    const items = m && Array.isArray(m.items) ? m.items : [];
+    let hit = null;
+    for (const it of items) {
+      const g = forbidden(it && it.from);
+      if (g) { hit = { path: it.from, guard: g }; break; }
+    }
+    if (hit) refused.push({ batch: v.batch, path: hit.path, guard: hit.guard });
+    else candidates.push(v);
+  }
+  if (o.dryRun) return { ok: true, dryRun: true, purged: [], candidates: candidates.map((v) => v.batch), refused, bytes: candidates.reduce((a, v) => a + v.bytes, 0) };
+  const purged = [];
+  for (const v of candidates) {
     try { fs.rmSync(path.join(trashDir(), v.batch), { recursive: true, force: true }); purged.push(v.batch); } catch (e) { /* 下次再试 */ }
   }
-  return { ok: true, dryRun: false, purged, bytes: victims.reduce((a, v) => a + v.bytes, 0) };
+  return { ok: true, dryRun: false, purged, refused, bytes: candidates.reduce((a, v) => a + v.bytes, 0) };
 }
 
 export function renderScan(s) {

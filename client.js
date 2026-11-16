@@ -202,12 +202,22 @@ window.__ModuleLoader__.load({
     // 9.6→9.78 只差 0.53px（亚像素）——图占 60px 却不传达信息。分档带把 y 轴变成
     // 「我在哪一档、离下一档多远」，折线只负责形态。
     // 段界与 config/rubric.json 的 bands 对齐（0/5/7/8.5/10）。
-    const BANDS = [
-      { from: 0, to: 5, color: C.bad, label: '0–5' },
-      { from: 5, to: 7, color: C.warn, label: '5–7' },
-      { from: 7, to: 8.5, color: C.accent, label: '7–8.5' },
-      { from: 8.5, to: 10, color: C.ok, label: '8.5–10' },
-    ];
+    // 阈值不在这里写死（架构审计 B6）：分档边界由 payload 的 d.bands 下发，
+    // 真源只有 config/rubric.json 一处。这里只负责把「档位 → 配色」定下来。
+    const BAND_PALETTE = [C.ok, C.accent, C.warn, C.bad];
+    function bandSegments(bands) {
+      const list = (Array.isArray(bands) && bands.length >= 2)
+        ? bands.slice().sort(function (a, b) { return b.min - a.min; })
+        : [{ min: 8.5, label: '良好' }, { min: 7, label: '可用' }, { min: 5, label: '需治理' }, { min: 0, label: '高风险' }];
+      return list.map(function (b, i) {
+        const top = i === 0 ? 10 : list[i - 1].min;
+        return {
+          from: b.min, to: top, label: b.label,
+          range: fmt(b.min) + '–' + fmt(top),
+          color: BAND_PALETTE[Math.min(i, BAND_PALETTE.length - 1)],
+        };
+      });
+    }
 
     // history.jsonl 里的 at 是 UTC（toISOString 写入），直接 slice(11,16) 会让面板
     // 比本地时间早 8 小时，所以这里按浏览器本地时区重算。
@@ -219,7 +229,7 @@ window.__ModuleLoader__.load({
       return String(t.getHours()).padStart(2, '0') + ':' + String(t.getMinutes()).padStart(2, '0');
     }
 
-    function trendChart(pts, lang) {
+    function trendChart(pts, lang, bands) {
       const list = (pts || []).filter(function (p) { return typeof p.total === 'number' && isFinite(p.total); });
       if (list.length < 2) {
         return h('div', { style: { fontSize: 11, color: C.dim, marginTop: 6 } }, lang.onlyOne);
@@ -231,7 +241,8 @@ window.__ModuleLoader__.load({
       const lo = Math.min.apply(null, vals), hi = Math.max.apply(null, vals);
       const spread = hi - lo;
 
-      const bands = BANDS.map(function (b) {
+      const segments = bandSegments(bands);
+      const bandRects = segments.map(function (b) {
         return h('rect', {
           key: 'b' + b.from, x: (b.from / 10) * W, y: 0,
           width: ((b.to - b.from) / 10) * W, height: H,
@@ -263,12 +274,12 @@ window.__ModuleLoader__.load({
       const legend = h('div', {
         style: { display: 'flex', gap: 8, marginTop: 4, flexWrap: 'wrap', fontSize: 10, color: C.dim },
       },
-        BANDS.map(function (b) {
+        segments.map(function (b) {
           return h('span', { key: 'l' + b.from, style: { display: 'inline-flex', alignItems: 'center', gap: 3 } },
             h('span', {
               style: { width: 6, height: 6, borderRadius: 2, background: b.color, opacity: 0.75, flex: 'none' },
             }, null),
-            b.label);
+            b.range + ' ' + b.label);
         }),
       );
 
@@ -278,7 +289,7 @@ window.__ModuleLoader__.load({
           style: { width: '100%', height: 40, display: 'block', color: C.dim },
           role: 'img',
           'aria-label': '分数趋势：近 ' + list.length + ' 次，' + lo + ' 到 ' + hi + '（10 分制）',
-        }, bands, ticks, marker, shape),
+        }, bandRects, ticks, marker, shape),
         spread < 1
           ? h('div', { style: { fontSize: 11, color: C.dim, marginTop: 3 } },
             String(lang.stable).replace('{n}', String(list.length)).replace('{a}', String(lo)).replace('{b}', String(hi)))
@@ -416,17 +427,16 @@ window.__ModuleLoader__.load({
 
     // 分数用分档色：>24px 属于 WCAG 大字（阈值 3:1），色相在这里是合法的，
     // 而在 11px 正文里不合法（见文档 docs/REVIEW-PANEL-2026-11-16.md §D1）。
-    function bandColor(score) {
+    function bandColor(score, bands) {
       if (!isFinite(score)) return C.dim;
-      if (score >= 8.5) return C.ok;
-      if (score >= 7) return C.accent;
-      if (score >= 5) return C.warn;
+      const segs = bandSegments(bands);
+      for (let i = 0; i < segs.length; i++) if (score >= segs[i].from) return segs[i].color;
       return C.bad;
     }
 
     // 英雄卡：面板最重要的一件事得有压倒性的地位（原先是 17px，和「47.6 MB」同级）。
-    function heroCard(d, lang, sevRow, gap) {
-      const color = bandColor(typeof d.score === 'number' ? d.score : NaN);
+    function heroCard(d, lang, sevRow, gap, bands) {
+      const color = bandColor(typeof d.score === 'number' ? d.score : NaN, bands);
       return h('div', {
         style: {
           border: '1px solid ' + C.line, borderRadius: RADIUS.card,
@@ -554,7 +564,7 @@ window.__ModuleLoader__.load({
           h('span', { style: { fontWeight: 700, color: C.fg } }, lang.trendTitle),
           h('span', { style: { marginLeft: 'auto', fontSize: FS.tiny } },
             lang.axisNote.replace('{n}', fmt((d.trend.recent || []).length)))),
-        trendChart(d.trend.recent, lang));
+        trendChart(d.trend.recent, lang, d.bands));
 
       // 维度横条：默认折叠——健康态 7 条都在 9.5–10，条形几乎等长；
       // 只有「有维度 < 9 分或存在 dimensionCaps」时才自动展开。
@@ -578,7 +588,7 @@ window.__ModuleLoader__.load({
           h('div', { style: { marginTop: 6 } },
             dims.map(function (x) {
               const pct = Math.max(2, Math.min(100, (Number(x.score) || 0) / 10 * 100));
-              const tone = x.score >= 9 ? C.ok : (x.score >= 7 ? C.accent : C.warn);
+              const tone = bandColor(x.score, d.bands);
               return h('div', {
                 key: x.key, title: x.label,
                 style: { display: 'flex', alignItems: 'center', gap: 6, marginTop: 4 },
@@ -777,7 +787,7 @@ window.__ModuleLoader__.load({
       },
         header,
         errorBar,
-        heroCard(d, lang, sevRow, gap),
+        heroCard(d, lang, sevRow, gap, d.bands),
         h('div', { style: { fontSize: FS.body, color: C.fg, marginTop: 8 } }, d.headline || ''),
         h('div', { style: { fontSize: FS.tiny, color: C.dim, marginTop: 2 } }, '更新 ' + stamp({ at: d.at })),
         grid,

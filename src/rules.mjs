@@ -1,6 +1,4 @@
-import fs from 'node:fs';
-import path from 'node:path';
-import { readJson } from './util.mjs';
+// B2：规则层只读采集层交来的事实，不再碰文件系统（守门测试见 test/layering.mjs）。
 
 function fpOf(o) {
   var m = o.measured || {};
@@ -15,12 +13,6 @@ function F(o) {
     evidence: o.evidence || [], measured: o.measured || {}, confidence: o.confidence || 'MEASURED', advisory: o.advisory === true,
     fixHint: o.fixHint || null, fp: o.fp || fpOf(o) };
 }
-function installedVersion(home, profileDir, name) {
-  var p = path.join(profileDir, 'node_modules', name, 'package.json');
-  var j = readJson(p, null);
-  return j ? j.version : null;
-}
-
 export function runRules(facts, allowlist) {
   var out = [];
   var cfg = allowlist || {};
@@ -38,6 +30,7 @@ export function runRules(facts, allowlist) {
     if (!p.depSpecs || typeof p.depSpecs !== 'object') p.depSpecs = {};
   });
   if (!facts.logs || typeof facts.logs !== 'object') facts.logs = {};
+  if (!Array.isArray(facts.profileErrors)) facts.profileErrors = [];
   if (!Array.isArray(facts.disk)) facts.disk = [];
   if (!Array.isArray(facts.engineAssets)) facts.engineAssets = [];
   var allow = cfg.depsNotBundled || {};
@@ -88,7 +81,10 @@ export function runRules(facts, allowlist) {
         if (!m) return;
         var nm = m[1];
         var vers = m[2].split('||').map(function (s) { return s.trim(); });
-        var inst = installedVersion(facts.home, p.dir, nm);
+        // B2：版本一律吃采集层事实，规则层不再碰文件系统。
+        var inst = (p.installedExclusions && Object.prototype.hasOwnProperty.call(p.installedExclusions, nm))
+          ? p.installedExclusions[nm]
+          : ((p.installed && Object.prototype.hasOwnProperty.call(p.installed, nm)) ? p.installed[nm] : null);
         if (inst === null) { if (!(cfg.exclusionsDead && cfg.exclusionsDead[entry])) dead.push(entry); return; }
         if (vers.indexOf(inst) === -1) {
           if (vers.length === 1) stale.push({ entry: entry, installed: inst });
@@ -134,13 +130,9 @@ export function runRules(facts, allowlist) {
 
   // R9 优先吃 facts.machines（采集期快照 / 测试夹具），没有再回落到活文件——
   // 否则 fixture 测试会偷偷依赖真实注册表，改一次真配置就让 P0 用例变红。
-  var machinesFile = path.join(facts.home, 'remote-workspaces', 'machines.json');
+  // B2：machines 的读取已在采集层做完（facts.machines），这里不再回落到活文件——
+  // 否则夹具测试会偷偷依赖真实注册表，改一次真配置就让 P0 用例变红。
   var list = Array.isArray(facts.machines) ? facts.machines : null;
-  if (!list && fs.existsSync(machinesFile)) {
-    var machines = readJson(machinesFile, null);
-    var liveList = machines && (Array.isArray(machines) ? machines : (machines.list || machines.machines || []));
-    if (Array.isArray(liveList)) list = liveList;
-  }
   if (list) {
     {
       var risky = [];
@@ -150,7 +142,7 @@ export function runRules(facts, allowlist) {
         if (kp && (/(^|[\\/])(Downloads|Desktop)([\\/]|$)/i.test(kp) || !/^\.ssh|[\\/]\.ssh[\\/]/.test(kp))) risky.push({ name: m.name || m.host, host: m.host, keyPath: kp });
       });
       if (risky.length) out.push(F({ ruleId: 'R9', dimension: 'security', severity: 'P0',
-        title: '外部密钥不在 ~/.ssh 下 ' + risky.length + ' 把', evidence: [machinesFile], measured: { machines: risky },
+        title: '外部密钥不在 ~/.ssh 下 ' + risky.length + ' 把', evidence: [facts.home + '/remote-workspaces/machines.json'], measured: { machines: risky },
         fixHint: '价值/外部系统操作，不自动做：迁移到 ~/.ssh 并 chmod 600，改注册表引用' }));
     }
   }
@@ -445,5 +437,21 @@ export function runRules(facts, allowlist) {
     }
   });
 
+  // 架构审计 P0-A2：profile 读不出来时必须显式承认「我没看全」。
+  // 严重度按 P0：host 启动时同样会跳过坏 profile，这已经不是审计噪声而是系统坏了；
+  // 封顶规则随之生效（P0 未关闭 → 总分封 5.0），正是要它显眼。
+  (facts.profileErrors || []).forEach(function (pe) {
+    out.push(F({
+      ruleId: 'R24',
+      dimension: 'reliability',
+      severity: 'P0',
+      title: 'profile「' + pe.name + '」未被体检：' + (pe.reason === 'parse-error' ? 'package.json 解析失败' : '有 node_modules 但没有 package.json'),
+      evidence: [pe.dir],
+      measured: { profile: pe.name, reason: pe.reason },
+      confidence: 'MEASURED',
+      fixHint: '修好该 profile 的 package.json（或删掉残留目录）后重跑体检；在此之前报告是残缺的，别把它当成健康。',
+      fp: 'R24#' + pe.name,
+    }));
+  });
   return out;
 }

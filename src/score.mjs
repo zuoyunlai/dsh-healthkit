@@ -1,3 +1,44 @@
+// rubric 自检（架构审计 B1）。
+//
+// 修前实测：把 caps 的 when 多写一个空格（'p0Open >= 1' → 'p0Open>=1'），封顶**静默失效**，
+// 5.0 直接变成 8.0；把 dimensions 的 key 拼错一个字母，P0 整条消失、总分 10.0。
+// 都是「配置写错一个字，对外承诺悄悄变」，所以必须在启动/体检时显式喊出来。
+export const CAP_WHENS = ['p0Open >= 1', 'p0Open >= 3'];
+
+export function validateRubric(rubric) {
+  const errs = [];
+  const r = rubric || {};
+  const dims = Array.isArray(r.dimensions) ? r.dimensions : [];
+  if (!dims.length) errs.push('dimensions 缺失或为空');
+  const seen = {};
+  dims.forEach(function (d) {
+    if (!d || !d.key) errs.push('存在没有 key 的维度');
+    else if (seen[d.key]) errs.push('维度 key 重复：' + d.key);
+    else seen[d.key] = true;
+    if (!(typeof d.weight === 'number' && d.weight >= 0)) errs.push('维度 ' + (d && d.key) + ' 的 weight 不是非负数');
+  });
+  if (dims.length && !dims.some(function (d) { return (Number(d.weight) || 0) > 0; })) errs.push('所有维度权重都是 0');
+  (Array.isArray(r.caps) ? r.caps : []).forEach(function (c) {
+    if (CAP_WHENS.indexOf(c && c.when) === -1) errs.push('caps[].when 不在白名单「' + String(c && c.when) + '」——该封顶会被静默忽略');
+    if (typeof (c && c.max) !== 'number') errs.push('caps[].max 必须是数字（when=' + String(c && c.when) + '）');
+  });
+  const bands = Array.isArray(r.bands) ? r.bands : [];
+  if (bands.length < 2) errs.push('bands 少于 2 档');
+  for (let i = 1; i < bands.length; i++) {
+    if (!(bands[i].min < bands[i - 1].min)) errs.push('bands 未按 min 严格降序（第 ' + (i + 1) + ' 项）');
+  }
+  const dcs = (Array.isArray(r.dimensionCaps) ? r.dimensionCaps : []).slice().sort(function (a, b) { return a.findings - b.findings; });
+  dcs.forEach(function (dc, i) {
+    if (typeof dc.findings !== 'number' || typeof dc.max !== 'number') errs.push('dimensionCaps 条目缺 findings/max');
+    else if (i > 0 && dc.max > dcs[i - 1].max) errs.push('dimensionCaps 未单调：findings 越多 max 反而更大');
+  });
+  if (!r.penalty || typeof r.penalty !== 'object') errs.push('penalty 缺失');
+  else ['P0', 'P1', 'P2'].forEach(function (s) {
+    if (typeof r.penalty[s] !== 'number') errs.push('penalty 缺 ' + s + '（该严重度将按 0 罚分）');
+  });
+  return errs;
+}
+
 export function score(rubric, findings, scenario) {
   var overrides = (rubric.scenarios && rubric.scenarios[scenario] && rubric.scenarios[scenario].overrides) || {};
   var dims = rubric.dimensions.map(function (d) {
@@ -7,8 +48,12 @@ export function score(rubric, findings, scenario) {
   var byKey = {};
   dims.forEach(function (d) { byKey[d.key] = d; });
   var p0 = 0;
+  // 丢弃项不再静默（架构审计 B1）：未知维度/未知严重度都记下来，由 engine 写进 self.notes。
+  var dropped = { dimension: [], severity: [] };
   findings.forEach(function (f) {
-    if (!byKey[f.dimension] || f.severity === 'INFO' || f.advisory === true) return;
+    if (f.severity === 'INFO' || f.advisory === true) return;
+    if (!byKey[f.dimension]) { dropped.dimension.push(f.ruleId); return; }
+    if (typeof rubric.penalty[f.severity] !== 'number') dropped.severity.push(f.ruleId + '/' + f.severity);
     var d = byKey[f.dimension];
     // 审计反哺 V04：UNKNOWN 从「固定轻罚」改为「按名义严重度打折」——
     // 旧表里 P1 已证扣 1.8 而 P1 UNKNOWN 只扣 0.5，取证不足反而比已证问题罚得轻，
@@ -37,7 +82,10 @@ export function score(rubric, findings, scenario) {
   }
   var band = rubric.bands.filter(function (b) { return capped >= b.min; })[0];
   return { scenario: scenario, raw: Math.round(raw * 100) / 100, total: Math.round(capped * 100) / 100,
-           capReason: capReason, band: band ? band.label : '-', p0Open: p0, dims: dims, rubricVersion: rubric.version };
+           capReason: capReason, band: band ? band.label : '-', p0Open: p0, dims: dims, rubricVersion: rubric.version,
+           // B6：分档阈值随结果一起下发，前端不再各自硬编码一份 8.5/7/5。
+           bands: (rubric.bands || []).map(function (b) { return { min: b.min, label: b.label }; }),
+           dropped: dropped, unknownScenario: !!(rubric.scenarios && !rubric.scenarios[scenario]) };
 }
 
 

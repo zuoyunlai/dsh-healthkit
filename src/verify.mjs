@@ -14,7 +14,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { dataDir } from './paths.mjs';
-import { latestRun, listRuns, diffRuns } from './snapshot.mjs';
+import { latestRun, listRuns, diffRuns, runsDir } from './snapshot.mjs';
 
 export function verifyDir(home) {
   return path.join(dataDir(home), 'verify');
@@ -72,6 +72,13 @@ export function writePending(result, opts) {
 //   stillThere —— 还在 → 没修或修法不对
 //   muted      —— 不出现但被退役记档 → 被静音了，不算修好
 // 外加「回归」：本次新出现的 P0/P1（相对上一次快照）。
+// 架构审计 B3：启动验回的入参先问一句「有没有待验目标」。
+// 没有的话整次全量体检（~1s / 1.2 万次系统调用）就是纯浪费——只换来一句「没有东西要验」。
+export function hasPendingTargets(home) {
+  const pending = readJson(pendingPath(home), null);
+  return !!(pending && Array.isArray(pending.targets) && pending.targets.length > 0);
+}
+
 export function checkPending(result, opts) {
   const o = opts || {};
   const home = o.home;
@@ -149,8 +156,9 @@ export function timeline(home, limit) {
   const runs = listRuns(home).slice(-n);
   const out = [];
   for (let i = 1; i < runs.length; i++) {
-    const prev = readJson(path.join(verifyDir(home), '..', 'runs', runs[i - 1].file), null);
-    const cur = readJson(path.join(verifyDir(home), '..', 'runs', runs[i].file), null);
+    // C4：目录布局只有一个真源（snapshot.runsDir），别再手写 '..' 穿越。
+    const prev = readJson(path.join(runsDir(home), runs[i - 1].file), null);
+    const cur = readJson(path.join(runsDir(home), runs[i].file), null);
     if (!prev || !cur) continue;
     const d = diffRuns(prev, cur);
     out.push({
