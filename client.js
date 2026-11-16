@@ -761,6 +761,40 @@ window.__ModuleLoader__.load({
             }))
           : h('div', { style: { fontSize: FS.body, color: C.dim } }, lang.timelineHint));
 
+      // 产品指标（只在算得出来时给数，算不出来就明说，不编）
+      const prod = d.product || null;
+      const prodLines = [];
+      if (prod && prod.secondRun) {
+        const sr = prod.secondRun;
+        prodLines.push(sr.returnedAfter7d === true
+          ? '第二次运行：是（有效 ' + fmt(sr.effectiveRuns) + ' 次 / ' + fmt(sr.distinctDays) + ' 天，跨 ' + fmt(sr.spanDays) + ' 天）'
+          : '第二次运行：算不出来 —— ' + (sr.reason || '样本不足'));
+      }
+      if (prod && prod.adoption) {
+        const ad = prod.adoption;
+        prodLines.push(typeof ad.rate === 'number'
+          ? '结论采纳率：' + fmt(ad.rate) + '%（真修好 ' + fmt(ad.fixed) + ' / 还在 ' + fmt(ad.stillThere) + (ad.muted ? '；静音 ' + fmt(ad.muted) + ' 不算采纳' : '') + '）'
+          : '结论采纳率：算不出来 —— ' + (ad.note || '无数据'));
+      }
+      if (prod && prod.falsePositive) {
+        const fpv = prod.falsePositive;
+        prodLines.push(typeof fpv.rate === 'number'
+          ? '误报率：' + fmt(fpv.rate) + '%（已退役 ' + fmt(fpv.retired) + ' / 发现 ' + fmt(fpv.findings) + '）'
+          : '误报率：只知已退役 ' + fmt(fpv.retired) + ' 条');
+      }
+      const productNode = prodLines.length
+        ? h('details', {
+          style: {
+            border: '1px solid ' + C.line, borderRadius: RADIUS.card,
+            background: C.card, padding: '7px 9px', marginTop: 8,
+          },
+        },
+          h('summary', { style: { cursor: 'pointer', fontSize: FS.small, color: C.dim } }, '产品指标（本地，不外发）'),
+          h('div', { style: { marginTop: 6 } }, prodLines.map(function (t, i) {
+            return h('div', { key: 'p' + i, style: { fontSize: FS.small, color: C.fg, marginTop: 3 } }, t);
+          })))
+        : null;
+
       const retiredNode = d.retiredList && d.retiredList.length
         ? h('details', {
           style: {
@@ -809,6 +843,7 @@ window.__ModuleLoader__.load({
         capsNode,
         verifyNode,
         timelineNode,
+        productNode,
         retiredNode,
         h('div', { style: { fontSize: FS.tiny, color: C.dim, marginTop: 12 } }, lang.readOnly + ' · 数据缓存 60 秒'),
       );

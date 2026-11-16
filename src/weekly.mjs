@@ -14,6 +14,7 @@ import { latestRun, diffRuns } from './snapshot.mjs';
 import { checkPending } from './verify.mjs';
 import { headlineOf, countBySeverity, pickTopActions } from './digest.mjs';
 import { stats as feedbackStats, renderStats as renderFeedback } from './feedback.mjs';
+import { productMetrics } from './metrics.mjs';
 
 function currentRunShape(result) {
   return {
@@ -87,12 +88,32 @@ export function buildDigest(result, opts) {
     if (fs1.answered > 0) feedback = { stats: fs1, text: renderFeedback(fs1) };
   } catch (e) { feedback = null; }
 
+  // 产品指标（§5 的 2/3 + 误报率）：能算才出现，算不出来不当噪声。
+  let metrics = null;
+  try {
+    const m = productMetrics(home, { findingsCount: findings.length });
+    const sr = m.secondRun || {};
+    const ad = m.adoption || {};
+    const fpv = m.falsePositive || {};
+    if (sr.returnedAfter7d !== null || typeof ad.rate === 'number' || typeof fpv.rate === 'number') metrics = m;
+  } catch (e) { metrics = null; }
+
   const top = pickTopActions(findings, o.limit || 3);
   const lines = [];
   lines.push('**' + headline + '**');
   if (feedback) {
     lines.push('');
     lines.push(feedback.text);
+  }
+  if (metrics) {
+    lines.push('');
+    lines.push('运行数据：' + [
+      (metrics.secondRun && metrics.secondRun.returnedAfter7d !== null
+        ? '第二次运行 ' + (metrics.secondRun.returnedAfter7d ? '是' : '还没有')
+        : null),
+      (metrics.adoption && typeof metrics.adoption.rate === 'number' ? '采纳率 ' + metrics.adoption.rate + '%' : null),
+      (metrics.falsePositive && typeof metrics.falsePositive.rate === 'number' ? '误报率 ' + metrics.falsePositive.rate + '%' : null),
+    ].filter(Boolean).join(' · '));
   }
   lines.push('');
   if (!changed) {

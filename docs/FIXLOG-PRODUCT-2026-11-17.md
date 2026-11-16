@@ -128,6 +128,25 @@ score=9.81/10 (raw 9.81, band 良好, P0=0, retired=3)
   低于 30% 时 `audit_digest` 会直接点出来「它多在你已经知道的事上说话」。
 - 周报只在**真的回答过**时带这一行，不占空版面。
 
+### 7c 产品指标上屏（已落地）
+
+产品审计说第 2、3 个指标「能力在、数据没有」——现在把它们算出来并摆到面板与周报上：
+
+| 指标 | 口径 | 现在的实测 |
+|---|---|---|
+| 第二次运行 | 只数 `human` / `automation` 来源；跨度 ≥7 天才给「是/否」，否则明说观察期不足 | **算不出来**：账本 54 条全是老记录（没有 source 字段），0 次有效运行 |
+| 结论采纳率 | `fixed / (fixed + stillThere)`；**被静音的（muted）不算采纳** | **算不出来**：还没有验回记录 |
+| 误报率 | `retired / (findings + retired)` | **15%**（已退役 3 / 发现 17） |
+
+- 落点：新 `src/metrics.mjs`（`productMetrics` / `renderMetrics`）；面板 payload 加 `product`
+  （侧栏多一个折叠块「产品指标（本地，不外发）」）；`audit_digest` 只在**算得出来**时带一行。
+- 硬约束：算不出来就写「算不出来 + 为什么 + 怎么才会有」，**不许拿老记录冒充用户回来跑过**。
+- 守卫：`test/metrics.mjs`（16 项断言：agent 跑的不算有效、跨 10 天为真、静音不算采纳、
+  空数据文案里不许出现百分比）。
+
+一个附带的好消息：**这三行现在会自己变真**——你下一次以 human 身份跑体检、跨 7 天后再跑一次，
+「第二次运行」就会从「算不出来」变成「是」。
+
 ## 八、复跑
 
 ```bash
@@ -135,5 +154,5 @@ node bin/audit.mjs --no-record            # 首屏：结论 + 3 条 + INFO 收�
 node bin/audit.mjs --no-record --digest   # 差异周报（本机当前会输出「没有变化」）
 node bin/audit.mjs --no-record --verbose  # 全量发现
 node bin/audit.mjs --no-record --feedback R17=unknown   # 首次价值信号：这条我原先不知道
-npm test                                  # 27 组
+npm test                                  # 28 组
 ```

@@ -15,6 +15,7 @@ import { stats, load as loadHistory } from './history.mjs';
 import { analyze as trimAnalyze } from './trim.mjs';
 import { scan as cleanScan, PROTECTED_NAMES as CLEAN_PROTECTED } from './clean.mjs';
 import { buildMatrix } from './capability-map.mjs';
+import { productMetrics } from './metrics.mjs';
 import { readLastVerify, timeline as verifyTimeline } from './verify.mjs';
 
 const PREFIX = '/dsh-healthkit-panel';
@@ -23,7 +24,7 @@ const PREFIX = '/dsh-healthkit-panel';
 // 这里给它一个版本串 + 必需键集；字段改名会立刻被面板测试挡住，而不是面板静默变空白。
 export const PANEL_SCHEMA = 'dsh-healthkit/panel/v1';
 export const PANEL_REQUIRED_KEYS = [
-  'schema', 'at', 'score', 'raw', 'band', 'bands', 'count', 'retired',
+  'schema', 'at', 'score', 'raw', 'band', 'bands', 'count', 'retired', 'product',
   'p0', 'p1', 'p2', 'info', 'headline', 'trend', 'items', 'plan', 'clean', 'trim', 'capabilities', 'dims',
 ];
 
@@ -217,6 +218,11 @@ export function collectSummary() {
     retired: r.retired.length,
     p0: by.P0, p1: by.P1, p2: by.P2, info: by.INFO,
     headline: headlineOf(by, r.score.total, r.findings.length),
+    // 产品指标（第二次运行 / 采纳率 / 误报率）：面板只展示，不打分、不参与评分。
+    product: (() => {
+      try { return productMetrics(r.facts.home, { findingsCount: r.findings.length }); }
+      catch (e) { return null; }
+    })(),
     trend: {
       runs: h.runs,
       sources: h.sources || {},

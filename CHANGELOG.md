@@ -49,9 +49,17 @@
   `firstValueRate = 不知道 / 已回答`，低于 30% 时 `audit_digest` 直接点出来。
   这是「值不值得装」的唯一真指标，此前没有任何机制在收。
 
+### 补齐：产品指标上屏
+
+- 新 `src/metrics.mjs`：第二次运行（只数 human/automation，跨度 ≥7 天才给结论）、
+  结论采纳率（`fixed/(fixed+stillThere)`，**静音不算采纳**）、误报率（`retired/(findings+retired)`）。
+- 面板 payload 加 `product`，侧栏多一个折叠块「产品指标（本地，不外发）」；`audit_digest` 只在算得出来时带一行。
+- 口径是「算不出来就说算不出来」：本机当前 第二次运行/采纳率 都是「算不出来」（老账本无 source、无验回记录），
+  误报率 15%（3/20）。这两个数会随真实使用自己变真。
+
 ### 测试
 
-- 新增 `test/digest.mjs`（16 项断言）、`test/feedback.mjs`（13 项断言）；`test/verify.mjs` 按新判据更新（P2 进清单、最多 3 条、
+- 新增 `test/digest.mjs`（16 项断言）、`test/feedback.mjs`（13 项断言）、`test/metrics.mjs`（16 项断言）；`test/verify.mjs` 按新判据更新（P2 进清单、最多 3 条、
   只有 P2 时也有目标）；`tools-shape` / `apply-inject` / `init` 文案同步到 15 个工具。
 
 ## 未发布 — 架构审计反哺批（P0×2 · P1×7 · P2×5 全部落地）
