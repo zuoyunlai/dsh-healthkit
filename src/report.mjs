@@ -65,7 +65,7 @@ export function renderReport(facts, findings, sc, opts) {
     L('## 三之四、本插件自身状态（不计入评分）');
     L('');
     L('- 版本：' + (sl.version || '?') + ' · rubric ' + sc.rubricVersion);
-    L('- 工具面：' + (sl.tools && sl.tools.length ? sl.tools.join('、') : '未注册'));
+    L('- 工具面：' + (sl.tools && sl.tools.length ? sl.tools.join('、') : 'CLI 模式（工具由宿主注册，不在此处列出）'));
     L('- 数据目录：' + (sl.dataDir || '未知') + ' · 账本 ' + (sl.historyRuns === null || sl.historyRuns === undefined ? '未知' : sl.historyRuns + ' 次') + ' · 已退役 ' + (sl.retiredCount || 0) + ' 条');
     if (sl.notes && sl.notes.length) L('- 备注：' + sl.notes.join('；'));
     L('');

@@ -49,7 +49,9 @@ export function audit(opts) {
   // §13.7 自审分离：self 段只描述体检器自身，不进评分。
   var self = {
     version: pkgVersion,
+    // 工具面：宿主里由 apply() 注入；CLI 直跑时没有宿主注册，明说而不是显示「未注册」吓人。
     tools: opts.selfTools || [],
+    toolFace: opts.selfTools && opts.selfTools.length ? 'host' : 'cli',
     dataDir: dataDir(facts.home),
     retiredCount: retired.length,
     notes: [],
