@@ -69,10 +69,11 @@ window.__ModuleLoader__.load({
     const LOGO_VIEWBOX = '0 0 658.9 658.9';
     const LOGO_PATH = 'M437.13 104.46c-42.38,0 -81.78,19.26 -107.89,52.66 -26.12,-32.97 -65.51,-52.66 -107.9,-52.66 -76.63,0 -139.14,63.79 -139.14,142.14 0,35.11 12.84,69.36 36.39,95.48 9.85,11.99 19.69,23.98 29.54,35.54l87.77 -62.08c7.28,-5.14 17.55,-3.86 23.12,2.99l32.97 40.25 75.78 -66.36c7.28,-6.43 17.98,-5.57 23.98,1.71 6.42,7.28 5.56,17.98 -1.72,23.97l-89.05 77.93c-7.28,6.42 -18.41,5.56 -24.41,-2.14l-33.82 -41.53 -71.93 50.95c59.09,69.36 133.58,151.13 158.42,151.13 32.11,0 158.41,-148.57 210.65,-212.36 23.54,-26.54 36.82,-60.37 36.82,-95.9 0,-78.36 -62.51,-141.72 -139.58,-141.72l0 0z';
 
-    function icon(size) {
-      const s = size || 16;
+    function HealthkitIcon(props) {
+      const s = props && typeof props.size === 'number' ? props.size : 16;
       return h('svg', {
         width: s, height: s, viewBox: LOGO_VIEWBOX,
+        className: props && props.className,
         style: { display: 'block', flex: 'none' },
         'aria-hidden': 'true', focusable: 'false',
       },
@@ -201,7 +202,7 @@ window.__ModuleLoader__.load({
       const d = state.data;
 
       const header = h('div', { style: { display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 } },
-        icon(18),
+        h(HealthkitIcon, { size: 18 }),
         h('div', { style: { fontSize: 13, fontWeight: 700, color: C.fg } }, lang.title),
         h('div', { style: { flex: 1 } }),
         h('a', {
@@ -314,7 +315,7 @@ window.__ModuleLoader__.load({
     function TitleSpan(props) {
       const lang = props.lang || I18N.zh;
       return h('span', { style: { display: 'inline-flex', alignItems: 'center', gap: 6 } },
-        icon(16), h('span', { style: { fontSize: 12 } }, lang.title));
+        h(HealthkitIcon, { size: 16 }), h('span', { style: { fontSize: 12 } }, lang.title));
     }
 
     return {
@@ -338,7 +339,7 @@ window.__ModuleLoader__.load({
               disposers.push(tabs.register({
                 id: IMPL_ID, kind: KIND, keepMounted: true, priority: 'extension',
                 title: function () { return lang.title; },
-                guide: [{ id: KIND, order: 70, title: function () { return lang.title; }, icon: icon }],
+                guide: [{ id: KIND, order: 70, title: function () { return lang.title; }, icon: HealthkitIcon }],
               }));
             } catch (e) {
               try { console.warn(TAG, '注册 tab 类型失败：', (e && e.message) || e); } catch (e2) { /* ignore */ }
