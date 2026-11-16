@@ -7,7 +7,7 @@ import { tagProfile, redundancy } from './capabilities.mjs';
 export function collect(ctxOpts) {
   var home = dshHome();
   var yaml = loadYaml(home);
-  var facts = { home: home, collectedAt: new Date().toISOString(), yamlAvailable: !!yaml, profiles: [], patchEntries: {}, exclusions: {}, costTracker: null, disk: [], engineAssets: [], logs: {}, vcs: false };
+  var facts = { home: home, collectedAt: new Date().toISOString(), yamlAvailable: !!yaml, profiles: [], patchEntries: {}, exclusions: {}, costTracker: null, disk: [], engineAssets: [], logs: {}, vcs: false, machines: null };
 
   var profNames = listDirs(path.join(home, 'profiles'));
   for (var i = 0; i < profNames.length; i++) {
@@ -53,6 +53,16 @@ export function collect(ctxOpts) {
 
   facts.vcs = exists(path.join(home, 'profiles', '.git'));
   facts.credentialsFiles = listFiles(home).filter(function (f) { return /^[.]credentials/.test(f); });
+
+  // 远端机器注册表：只取 R9 需要的字段，不采集任何凭据
+  var machinesJson = readJson(path.join(home, 'remote-workspaces', 'machines.json'), null);
+  if (machinesJson) {
+    var ml = Array.isArray(machinesJson) ? machinesJson : (machinesJson.list || machinesJson.machines || []);
+    if (Array.isArray(ml)) facts.machines = ml.map(function (m) {
+      return { name: m.name || null, host: m.host || null, useSshConfig: m.useSshConfig === true,
+               privateKeyPath: m.privateKeyPath || null, keyPath: m.keyPath || null };
+    });
+  }
 
   var candidates = ['', 'profiles', 'logs', 'storages'];
   for (var c = 0; c < candidates.length; c++) {

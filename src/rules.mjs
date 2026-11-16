@@ -104,11 +104,17 @@ export function runRules(facts, allowlist) {
 
   if (!facts.vcs) out.push(F({ ruleId: 'R5', dimension: 'consistency', severity: 'P1', title: '配置未纳入版本控制（profiles/.git 不存在）', evidence: [facts.home + '/profiles'], fixHint: 'L2: git init + 只跟踪 manifests' }));
 
+  // R9 优先吃 facts.machines（采集期快照 / 测试夹具），没有再回落到活文件——
+  // 否则 fixture 测试会偷偷依赖真实注册表，改一次真配置就让 P0 用例变红。
   var machinesFile = path.join(facts.home, 'remote-workspaces', 'machines.json');
-  if (fs.existsSync(machinesFile)) {
+  var list = Array.isArray(facts.machines) ? facts.machines : null;
+  if (!list && fs.existsSync(machinesFile)) {
     var machines = readJson(machinesFile, null);
-    var list = machines && (Array.isArray(machines) ? machines : (machines.list || machines.machines || []));
-    if (Array.isArray(list)) {
+    var liveList = machines && (Array.isArray(machines) ? machines : (machines.list || machines.machines || []));
+    if (Array.isArray(liveList)) list = liveList;
+  }
+  if (list) {
+    {
       var risky = [];
       list.forEach(function (m) {
         if (m.useSshConfig && !m.privateKeyPath) return;   // alias 由 ~/.ssh/config 解析，密钥位置不归本规则管

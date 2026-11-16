@@ -29,7 +29,7 @@ dsh plugin --profile <profile> add link:E:/path/to/dsh-auditkit
 | 工具 | 作用 |
 | --- | --- |
 | `audit_run` | 只读体检，返回总分、分档、P0/P1/P2 计数与 P0/P1 清单 |
-| `audit_report` | 跑体检并把完整 Markdown 报告写到工作区 `AUDIT-<日期>.md` |
+| `audit_report` | 跑体检并把完整 Markdown 报告写成文件：缺省落**本会话工作区** `AUDIT-<日期>.md`（`out`/`reportDir` 优先，取不到工作区退 `$DSH_HOME/dsh-auditkit/reports/`，永不落 profile） |
 | `audit_clean` | 清理可再生垃圾：**默认只预览**；执行也是先移入回收区，7 天内可一键还原 |
 | `audit_trend` | 分数历史：次数、最新分与变化、均值、最好/最差、P0 未关，附 sparkline |
 

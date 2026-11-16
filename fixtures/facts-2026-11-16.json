@@ -2,6 +2,20 @@
   "home": "C:\\Users\\Zuoyunlai\\.dsh",
   "collectedAt": "2026-11-15T17:42:27.433Z",
   "yamlAvailable": true,
+  "machines": [
+    {
+      "name": "aliyun-47",
+      "host": "47.107.230.73",
+      "useSshConfig": false,
+      "privateKeyPath": "F:\\Downloads\\_本地ssh.pem"
+    },
+    {
+      "name": "tencent-14",
+      "host": "14.103.28.19",
+      "useSshConfig": true,
+      "privateKeyPath": null
+    }
+  ],
   "profiles": [
     {
       "name": "desktop",

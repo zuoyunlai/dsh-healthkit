@@ -15,10 +15,11 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
+import { resolveReportPath } from './src/reportpath.mjs';
 
 export const name = 'dsh-auditkit';
 
-const VERSION = '0.4.0';
+const VERSION = '0.4.1';
 
 function homeDir() { return process.env.DSH_HOME || path.join(os.homedir(), '.dsh'); }
 function statusPath() { return path.join(homeDir(), 'dsh-auditkit', 'plugin-status.json'); }
@@ -61,6 +62,7 @@ const REPORT_SCHEMA = {
     score: { type: 'number' },
     findings: { type: 'number' },
     bytes: { type: 'number' },
+    via: { type: 'string' },
   },
   required: ['path', 'score', 'findings'],
 };
@@ -96,7 +98,13 @@ const TREND_SCHEMA = {
   required: ['action', 'summary'],
 };
 
-const TOOLS = [
+// 工具表按「每次 apply 的依赖」构建：report 落点需要会话工作区解析器，
+// 不能写成模块级闭包（那样每个宿主实例会共享同一份依赖）。
+function buildTools(deps) {
+  const d = deps || {};
+  const resolveWorkspace = (typeof d.resolveWorkspace === 'function') ? d.resolveWorkspace : function () { return null; };
+  const pluginConfig = (d.config && typeof d.config === 'object') ? d.config : {};
+  return [
   {
     name: 'audit_run',
     description: '对当前 DSH 安装跑一次只读体检：返回总分、分档与 P0/P1/P2 计数（不修改任何配置、不联网）',
@@ -161,27 +169,42 @@ const TOOLS = [
   },
   {
     name: 'audit_report',
-    description: '跑一次体检并把完整 Markdown 报告写到工作区（默认 AUDIT-<日期>.md），返回路径与摘要',
+    description: '跑一次体检，把完整 Markdown 报告写成文件：缺省写本会话工作区的 AUDIT-<日期>.md；给了 out 则按 out（相对路径以会话工作区为基准）；取不到工作区时退到 $DSH_HOME/dsh-auditkit/reports/。返回路径、落点来源与摘要',
     parameters: {
       type: 'object',
-      properties: { out: { type: 'string', description: '报告输出路径，缺省写当前工作区' } },
+      properties: {
+        out: { type: 'string', description: '报告输出路径：绝对路径照用，相对路径以本会话工作区为基准；缺省 = 会话工作区下的 AUDIT-<日期>.md。注意：不接受「相对 process.cwd」的旧语义' },
+      },
       additionalProperties: false,
     },
     output: {
       schema: REPORT_SCHEMA,
       render(_args, v) {
-        return text('报告已写入 ' + v.path + '\n总分 ' + v.score + ' · 问题 ' + v.findings + ' 条 · ' + v.bytes + ' 字节');
+        return text('报告已写入 ' + v.path
+          + '\n落点 ' + (v.via || '?') + ' · 总分 ' + v.score + ' · 问题 ' + v.findings + ' 条 · ' + v.bytes + ' 字节');
       },
     },
-    execute: async (args) => {
+    execute: async (args, exec) => {
       const { audit } = await import('./src/engine.mjs');
       const r = audit({ scenario: 'general' });
       const hist = await import('./src/history.mjs');
       hist.append(r, { scenario: 'general' });
-      const d = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
-      const out = (args && args.out) || path.join(process.cwd(), 'AUDIT-' + d + '.md');
-      fs.writeFileSync(out, r.report, 'utf8');
-      return { path: out, score: r.score.total, findings: r.findings.length, bytes: Buffer.byteLength(r.report, 'utf8') };
+      const workspace = resolveWorkspace(exec);
+      const target = resolveReportPath({
+        out: args && args.out,
+        reportDir: pluginConfig.reportDir,
+        workspace,
+      });
+      if (target.error) throw new Error('audit_report: ' + target.error);
+      fs.mkdirSync(path.dirname(target.path), { recursive: true });
+      fs.writeFileSync(target.path, r.report, 'utf8');
+      return {
+        path: target.path,
+        via: target.source,
+        score: r.score.total,
+        findings: r.findings.length,
+        bytes: Buffer.byteLength(r.report, 'utf8'),
+      };
     },
   },
   {
@@ -274,13 +297,29 @@ const TOOLS = [
       };
     },
   },
-];
+  ];
+}
 
 export function apply(ctx, config) {
   const notes = [];
   const registered = [];
   const failures = [];
   const state = { toolsReady: false, surfaces: [] };
+
+  // 会话工作区解析（issue #1）：宿主进程的 process.cwd() 是 profile 目录，
+  // 不能当「工作区」用。改成问 workingDirectory 服务要这个 agent 的会话目录。
+  state.resolveWorkspace = function resolveWorkspace(exec) {
+    try {
+      if (!exec || !exec.agent || !exec.agent.session) return null;
+      if (typeof ctx.get !== 'function') return null;
+      const wd = ctx.get('workingDirectory');
+      if (!wd || typeof wd.get !== 'function') return null;
+      const dir = wd.get(exec.agent.session);
+      return (typeof dir === 'string' && dir) ? dir : null;
+    } catch (e) {
+      return null;
+    }
+  };
 
   // ④ 进门就落档
   writeStatus({
@@ -289,6 +328,7 @@ export function apply(ctx, config) {
     loadedAt: new Date().toISOString(),
     node: process.version,
     platform: process.platform,
+    processCwd: process.cwd(),
     configKeys: config && typeof config === 'object' ? Object.keys(config) : [],
     notes: [],
   });
@@ -305,7 +345,7 @@ export function apply(ctx, config) {
     try {
       toolCtx.effect(() => {
         const disposers = [];
-        for (const t of TOOLS) {
+        for (const t of buildTools({ resolveWorkspace: state.resolveWorkspace, config })) {
           try { disposers.push(tools.register(t)); registered.push(t.name); }
           catch (e) { failures.push(t.name + ': ' + msg(e)); }
         }
