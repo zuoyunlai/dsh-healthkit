@@ -47,7 +47,7 @@ P0 会封顶总分（≥1 条封 5.0，≥3 条封 4.0）——所以分数涨�
 
 ## 清理为什么敢按
 
-- **永不直删**：一律进 `$DSH_HOME/dsh-auditkit/trash/<批次>/`，带 manifest，7 天内搬回原样
+- **永不直删**：一律进 `$DSH_HOME/dsh-healthkit/trash/<批次>/`，带 manifest，7 天内搬回原样
 - **今天的备份绝不动**：`_backup` 只淘汰 ≥14 天的
 - **护栏硬挡**：`node_modules` / `sessions` / `attachments` / `skills` / `data` / `.git` /
   credentials 一律拒绝；`apply` 必须给具体 ids，没有「全清」
@@ -57,7 +57,7 @@ P0 会封顶总分（≥1 条封 5.0，≥3 条封 4.0）——所以分数涨�
 
 R1–R23 全跑；夹具回归 12/12、不变量 5/5；真宿主 `failures: []`。
 
-数据目录仍是 `$DSH_HOME/dsh-auditkit/`（账本、退役库、回收区不随改名搬家——搬了等于把历史丢掉）。
+数据目录 `$DSH_HOME/dsh-healthkit/`：插件首次启动会把旧的 `dsh-auditkit` 整目录 rename 过来（账本、退役库、回收区一起带走），rename 失败则回落旧目录继续用，不半搬。
 
 规划与取舍见 `docs/`。宿主契约（注册工具的四个坑、`process.cwd` 陷阱）与探针手法见
 `docs/NOTES-host-contract.md`，修过的 bug 见 `docs/ISSUES.md`。

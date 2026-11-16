@@ -4,16 +4,17 @@
 // 记账放在调用层（CLI / 工具壳）。这样「只读体检」的承诺不被污染，
 // 审计器自己的账本出问题也不影响体检结论。
 //
-// 文件：$DSH_HOME/dsh-auditkit/history.jsonl（append-only，一行一次体检）
+// 文件：$DSH_HOME/dsh-healthkit/history.jsonl（append-only，一行一次体检）
 // 读取时按本地日期折叠成每日一次（取当天最后一次），这样一天跑十次也不会把趋势画歪。
 import fs from 'node:fs';
 import path from 'node:path';
 import { dshHome, readJson } from './util.mjs';
+import { dataDir } from './paths.mjs';
 
 const MAX_RECORDS = 2000;
 const BARS = '▁▂▃▄▅▆▇█';
 
-export function historyPath() { return path.join(dshHome(), 'dsh-auditkit', 'history.jsonl'); }
+export function historyPath() { return path.join(dataDir(), 'history.jsonl'); }
 
 function localDay(ms) {
   const d = new Date(ms - new Date(ms).getTimezoneOffset() * 60000);

@@ -1,6 +1,6 @@
 {
   "name": "dsh-healthkit",
-  "version": "0.4.4",
+  "version": "0.4.5",
   "type": "module",
   "license": "MIT",
   "repository": {
@@ -47,7 +47,7 @@
   ],
   "scripts": {
     "audit": "node ./bin/audit.mjs",
-    "test": "node ./test/rules-on-fixture.mjs && node ./test/invariants.mjs && node ./test/reportpath.mjs && node ./test/version-guard.mjs"
+    "test": "node ./test/rules-on-fixture.mjs && node ./test/invariants.mjs && node ./test/reportpath.mjs && node ./test/version-guard.mjs && node ./test/migrate-guard.mjs"
   },
   "dsh": {
     "bundle": {
@@ -73,7 +73,7 @@
     },
     "disclosure": {
       "endpoints": [],
-      "retention": "审计产物写会话工作区（AUDIT-<日期>.md）；证据快照、退役记录在 $DSH_HOME/dsh-auditkit/；不联网、不上传会话内容"
+      "retention": "审计产物写会话工作区（AUDIT-<日期>.md）；证据快照、退役记录在 $DSH_HOME/dsh-healthkit/；不联网、不上传会话内容"
     }
   },
   "engines": {

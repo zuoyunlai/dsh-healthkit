@@ -2,7 +2,7 @@
 //
 // 设计红线（用户 2026-11-16 拍板）：
 //   ① 只碰「明确可再生」的一档：缓存、按龄淘汰的备份、审计器自己的过期索引；
-//   ② 永远不直删：先移进 $DSH_HOME/dsh-auditkit/trash/<批次>/，能一键还原，7 天后才真删；
+//   ② 永远不直删：先移进 $DSH_HOME/dsh-healthkit/trash/<批次>/，能一键还原，7 天后才真删；
 //   ③ profiles/node_modules/sessions/attachments/skills/data/凭据 一律不动，代码里用护栏硬挡；
 //   ④ 「需确认」档（远程工作区镜像）默认不选中，必须显式 confirm 才动。
 //
@@ -10,6 +10,7 @@
 // + dsh-ops 108M（都是必需品），attachments/sessions 在 30/60/90 天 TTL 下回收 0MB。
 // 真正可动的只有 ~150M 量级。工具不许为了数字好看去动必需资产。
 import fs from 'node:fs';
+import { dataDir } from './paths.mjs';
 import path from 'node:path';
 import { dshHome, exists, readJson, walk, daysAgo } from './util.mjs';
 
@@ -29,7 +30,7 @@ const FORBIDDEN = [
   /credentials/i,
 ];
 
-export function trashDir() { return path.join(dshHome(), 'dsh-auditkit', 'trash'); }
+export function trashDir() { return path.join(dataDir(), 'trash'); }
 
 export function fmtBytes(n) {
   if (!n || n < 0) return '0 B';
@@ -105,7 +106,7 @@ export function scan(opts) {
   }
 
   // 审计器自己的过期 bundle 索引
-  const idx = path.join(home, 'dsh-auditkit', 'bundle-index.json');
+  const idx = path.join(dataDir(home), 'bundle-index.json');
   if (exists(idx)) {
     const st = fs.statSync(idx);
     const hours = Math.floor((Date.now() - st.mtimeMs) / 3600000);

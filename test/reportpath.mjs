@@ -24,7 +24,7 @@ t('缺省落会话工作区', () => {
 t('取不到工作区时落插件数据目录，不落 cwd', () => {
   const r = resolveReportPath({ now, home });
   assert.equal(r.source, 'fallback');
-  assert.equal(r.path, path.join(home, 'dsh-auditkit', 'reports', 'AUDIT-2026-11-16.md'));
+  assert.equal(r.path, path.join(home, 'dsh-healthkit', 'reports', 'AUDIT-2026-11-16.md'));
   assert.ok(!r.path.includes('profiles'));
 });
 

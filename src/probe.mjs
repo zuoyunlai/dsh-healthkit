@@ -2,8 +2,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { readJson } from './util.mjs';
+import { dataDir } from './paths.mjs';
 
-function cachePath(home) { return path.join(home, 'dsh-auditkit', 'bundle-index.json'); }
+function cachePath(home) { return path.join(dataDir(home), 'bundle-index.json'); }
 
 export function loadIndex(home, ttlHours) {
   var f = cachePath(home);

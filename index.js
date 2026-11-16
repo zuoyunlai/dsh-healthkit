@@ -14,8 +14,8 @@
 //   ④ apply() 第一行就落档：任何后续抛出都留得下证据。
 import fs from 'node:fs';
 import path from 'node:path';
-import os from 'node:os';
 import { resolveReportPath } from './src/reportpath.mjs';
+import { dataDir, migrateLegacyDataDir } from './src/paths.mjs';
 
 export const name = 'dsh-healthkit';
 
@@ -23,8 +23,7 @@ export const name = 'dsh-healthkit';
 // 2026-11-16 踩过：手写常量忘了跟着改，plugin-status.json 报 0.4.1 而包里已是 0.4.3。
 const VERSION = JSON.parse(fs.readFileSync(new URL('./package.json', import.meta.url), 'utf8')).version;
 
-function homeDir() { return process.env.DSH_HOME || path.join(os.homedir(), '.dsh'); }
-function statusPath() { return path.join(homeDir(), 'dsh-auditkit', 'plugin-status.json'); }
+function statusPath() { return path.join(dataDir(), 'plugin-status.json'); }
 
 function writeStatus(patch) {
   try {
@@ -308,6 +307,11 @@ export function apply(ctx, config) {
   const failures = [];
   const state = { toolsReady: false, surfaces: [] };
 
+  // 数据目录改名 dsh-healthkit（2026-11-16）：首次启动把旧的 dsh-auditkit 整目录 rename 过来；
+  // 失败就回落旧目录继续用，绝不半搬。结果写进 status 供事后核对。
+  let dataMigration = null;
+  try { dataMigration = migrateLegacyDataDir(); } catch (e) { dataMigration = { status: 'failed', error: msg(e) }; }
+
   // 会话工作区解析（issue #1）：宿主进程的 process.cwd() 是 profile 目录，
   // 不能当「工作区」用。改成问 workingDirectory 服务要这个 agent 的会话目录。
   state.resolveWorkspace = function resolveWorkspace(exec) {
@@ -331,6 +335,8 @@ export function apply(ctx, config) {
     node: process.version,
     platform: process.platform,
     processCwd: process.cwd(),
+    dataDir: dataDir(),
+    dataDirMigration: dataMigration,
     configKeys: config && typeof config === 'object' ? Object.keys(config) : [],
     notes: [],
   });

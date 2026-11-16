@@ -5,8 +5,9 @@ import { runRules } from './rules.mjs';
 import { score } from './score.mjs';
 import { renderReport } from './report.mjs';
 import { readJson } from './util.mjs';
+import { dataDir } from './paths.mjs';
 
-export function retireStorePath(home) { return path.join(home, 'dsh-auditkit', 'retirements.json'); }
+export function retireStorePath(home) { return path.join(dataDir(home), 'retirements.json'); }
 export function loadRetirements(home) { return readJson(retireStorePath(home), {}) || {}; }
 export function saveRetirements(home, store) {
   var p = retireStorePath(home);

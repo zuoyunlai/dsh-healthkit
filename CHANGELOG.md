@@ -1,5 +1,19 @@
 # CHANGELOG
 
+## 0.4.5 — 2026-11-16
+
+**数据目录统一为 `$DSH_HOME/dsh-healthkit/`**，并让它只剩一处真源。
+
+- 数据目录名原本手写在 6 个模块里（index / clean / engine / history / probe / reportpath），
+  与 bin 键、VERSION 常量是同一类"多处硬编码、改一处漏一处"的问题。现在集中到 `src/paths.mjs`，
+  其余模块只调 `dataDir()`。
+- **自动迁移**：插件启动时若新目录不存在、旧目录 `dsh-auditkit` 存在，就整目录 `rename` 过来
+  （同盘原子操作，账本/退役库/回收区一起搬）；新目录已存在则不动；rename 失败则**回落继续用旧目录**
+  并在 `plugin-status.json` 的 `dataDirMigration` 里报错，绝不半搬。
+- `plugin-status.json` 新增 `dataDir` 与 `dataDirMigration`（migrated / already / fresh / failed）。
+- 新增 `test/migrate-guard.mjs`：用临时目录钉死三种前置状态 + rename 后内容不丢，
+  并断言 `index.js` 与 `src/*.mjs`（除 paths.mjs）里不再出现旧目录名字面量。
+
 ## 0.4.4 — 2026-11-16
 
 - 修 `plugin-status.json` 报错版本：`index.js` 里 `VERSION` 是手写字面量（停在 `0.4.1`），包已发到 0.4.3 也没跟着走。改成运行时读 `package.json`，版本号只剩一处真源。
