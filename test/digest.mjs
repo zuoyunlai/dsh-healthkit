@@ -77,6 +77,11 @@ const r17 = rulesSrc.slice(rulesSrc.indexOf("ruleId: 'R17'"), rulesSrc.indexOf("
 ok('R17 必须带 fixHint', /fixHint:/.test(r17));
 ok('R17 的修法要指向 audit_clean', /audit_clean/.test(r17));
 
+// ⑤ 只跑 CLI 的人也必须能触发跨重启验回
+const binSrc = fs.readFileSync(new URL('../bin/audit.mjs', import.meta.url), 'utf8');
+ok('CLI 必须写待验清单（否则 audit_verify 只在工具面才有活干）', /writePending\(/.test(binSrc));
+ok('CLI 必须支持 --source 与 --no-record', /--source/.test(binSrc) && /no-record/.test(binSrc));
+
 fs.rmSync(home, { recursive: true, force: true });
 delete process.env.DSH_HEALTHKIT_NO_CACHE;
-console.log('digest: 通过（' + n + ' 项断言 · 首屏结论化 + 差异周报 + 待验清单 + R17 出口）');
+console.log('digest: 通过（' + n + ' 项断言 · 首屏结论化 + 差异周报 + 待验清单 + R17 出口 + CLI 接线）');

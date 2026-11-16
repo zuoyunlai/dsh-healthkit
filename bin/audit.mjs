@@ -392,6 +392,11 @@ try {
     var snapMod = await import('../src/snapshot.mjs');
     snapMod.writeRun(result, { home: home(), scenario: scenario, version: 'cli' });
   } catch (e) { /* 快照写失败不该让体检失败 */ }
+  // 待验清单也要写：只跑 CLI 的人此前永远不会触发跨重启验回（清单恒空 ⇒ audit_verify 空转）。
+  try {
+    var verMod = await import('../src/verify.mjs');
+    verMod.writePending(result, { home: home() });
+  } catch (e) { /* 待验清单写失败不该让体检失败 */ }
   var factsOut = arg('dump-facts', null);
   if (factsOut) { fs.mkdirSync(path.dirname(factsOut), { recursive: true }); fs.writeFileSync(factsOut, JSON.stringify(result.facts, null, 2), 'utf8'); }
   var fbArg = arg('feedback', null);
