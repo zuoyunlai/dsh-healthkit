@@ -4,7 +4,7 @@ export function renderReport(facts, findings, sc, opts) {
   var today = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
   L('# DSH 体检报告 ' + today);
   L('');
-  L('> 引擎 dsh-auditkit ' + (opts.version || '?') + ' · rubric ' + sc.rubricVersion + ' · 场景 ' + sc.scenario + ' · DSH_HOME ' + facts.home);
+  L('> 引擎 dsh-healthkit ' + (opts.version || '?') + ' · rubric ' + sc.rubricVersion + ' · 场景 ' + sc.scenario + ' · DSH_HOME ' + facts.home);
   L('> 只读审计。修复建议均为 L3-plan（只给命令与预检，不执行）。');
   L('');
   L('## 一、评分');
@@ -75,7 +75,7 @@ export function renderReport(facts, findings, sc, opts) {
   L('- 引擎资产：' + (facts.engineAssets.length ? facts.engineAssets.map(function (a) { return a.path.replace(facts.home, '~/.dsh'); }).join('，') : '未识别'));
   L('');
   L('---');
-  L('由 dsh-auditkit 生成。规则不可靠时会输出 UNKNOWN 而不是猜测；误报请用 audit_retire 记档（P2 交付）。');
+  L('由 dsh-healthkit 生成。规则不可靠时会输出 UNKNOWN 而不是猜测；误报请用 audit_retire 记档（P2 交付）。');
   return lines.join('\n') + '\n';
 }
 

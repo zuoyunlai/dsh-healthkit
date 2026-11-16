@@ -11,7 +11,7 @@
 dsh plugin --profile <profile> add dsh-healthkit
 
 # 开发版（符号链接，改源码重启即生效）
-dsh plugin --profile <profile> add link:/path/to/dsh-auditkit
+dsh plugin --profile <profile> add link:/path/to/dsh-healthkit
 ```
 
 开发期用 `link:`（符号链接，改源码重启宿主即生效）。`file:` 是拷贝，改源码不生效，
@@ -56,6 +56,8 @@ P0 会封顶总分（≥1 条封 5.0，≥3 条封 4.0）——所以分数涨�
 ## 现状
 
 R1–R23 全跑；夹具回归 12/12、不变量 5/5；真宿主 `failures: []`。
+
+数据目录仍是 `$DSH_HOME/dsh-auditkit/`（账本、退役库、回收区不随改名搬家——搬了等于把历史丢掉）。
 
 规划与取舍见 `docs/`。宿主契约（注册工具的四个坑、`process.cwd` 陷阱）与探针手法见
 `docs/NOTES-host-contract.md`，修过的 bug 见 `docs/ISSUES.md`。

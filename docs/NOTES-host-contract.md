@@ -45,7 +45,7 @@ cat $H/dsh-auditkit/plugin-status.json          # 看 registered / failures
 
 ## 四、命名
 
-**显示名「DSH 体检」，工程名 `dsh-auditkit`。** 「体检」是给用户看的：做一次、有报告、能对比，
+**显示名「DSH 体检」，包名 `dsh-healthkit`。**（曾用名 `dsh-auditkit`：npm 判它与既有包 `dsh-audit-kit` 过于相似而拒绝，故 0.4.1 起改名。） 「体检」是给用户看的：做一次、有报告、能对比，
 而且**不承诺接管**（没人指望体检中心替你戒烟）；`auditkit` 是给代码和宿主看的，说的是
 「这是审计工具」，而这正是可信度来源。
 

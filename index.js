@@ -1,4 +1,4 @@
-// dsh-auditkit 宿主半边
+// dsh-healthkit 宿主半边
 // 契约依据（实测自 dsh-chronicle / dsh-pet，两个同宿主在跑的真插件）：
 //   bundle 用 `- insert: [{id, name}]` 插条目；入口 = package.json 的 main。
 //   工具面 = `ctx.inject(['tools'], cb)` 等到服务 → `ctx.effect(() => ctx.tools.register({name, description, parameters, output:{schema,render}, execute}))`。
@@ -17,7 +17,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { resolveReportPath } from './src/reportpath.mjs';
 
-export const name = 'dsh-auditkit';
+export const name = 'dsh-healthkit';
 
 const VERSION = '0.4.1';
 
@@ -119,7 +119,7 @@ function buildTools(deps) {
       schema: RUN_SCHEMA,
       render(_args, v) {
         const lines = [
-          'dsh-auditkit · ' + v.score + '/10（' + v.band + '）',
+          'dsh-healthkit · ' + v.score + '/10（' + v.band + '）',
           'P0 ' + v.p0 + ' · P1 ' + v.p1 + ' · P2 ' + v.p2 + ' · 共 ' + v.findings + ' 条 · 已退役 ' + v.retired,
           '',
           v.summary,
@@ -225,7 +225,7 @@ function buildTools(deps) {
     output: {
       schema: CLEAN_SCHEMA,
       render(_args, v) {
-        return text('dsh-auditkit · clean/' + v.action + (v.dryRun ? '（预演）' : '') + '\n' + v.summary);
+        return text('dsh-healthkit · clean/' + v.action + (v.dryRun ? '（预演）' : '') + '\n' + v.summary);
       },
     },
     execute: async (args) => {
