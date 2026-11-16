@@ -1,5 +1,23 @@
 # CHANGELOG
 
+## 0.5.0 — 2026-11-16
+
+从「只报分」补到「能解释、能排期、能瘦身、能看」。
+
+- **四个新工具**：`audit_findings`（问题清单，按严重度排序带指纹）、`audit_explain`（一条问题的维度/证据/测得值/置信度/修法）、
+  `audit_plan`（先解 P0 封顶、再按单条增量排，给全修完的终点）、`audit_trim`（装载面瘦身：同能力多实现、超 bundles 上限、记忆插件叠放）。
+  工具面 4 → 8。
+- **只读面板** `/dsh-healthkit-panel`：总分、分档、P0/P1/P2、趋势 sparkline、可清理空间、装载面水位、前 8 条问题。
+  GET 不记账不写状态（预取/刷新/重放都安全），只认回环（非本机 403），离线可用（无外部 CDN）。
+  用 `ctx.inject(['webServer'])` 挂载；挂不上就降级成「没有面板」，结果写进 `plugin-status.json` 的 `panel`。
+- **CLI 补齐**：`--help`（不跑体检、不记账）、`--init`（接入自检：环境/profile/装没装/还差哪一步）、
+  `--trim`、`--findings`、`--explain <fp>`、`--plan`。解释型动作直接复用工具实现，避免两套文案漂移。
+- **能力标签收紧**：R20 原先 `search` 用 `/(search|fetch|crawl|scrap)/i` 太宽，把插件市场、SSH 远程、项目记忆
+  都算成搜索实现，给出「关掉 dsh-free-search、留 dshmarket」这种反向建议。现在按名字/描述的核心度判，宁可少报不可乱指。
+- **新增 `docs/PRESET-LAYER.md`**：权限预设的四层（宿主/profile/会话/自动化），以及
+  「为什么把 defaultPreset 改成 workspace-write，当前会话还是 danger-full-access」。
+- 新增 `test/tools-shape.mjs`（8 个工具的形状与行为）与 `test/panel.mjs`（路由/回环守卫/离线/缓存）。
+
 ## 0.4.6 — 2026-11-16
 
 0.4.5 改数据目录时漏掉的收尾（同一批「改名没改全」的尾巴）：

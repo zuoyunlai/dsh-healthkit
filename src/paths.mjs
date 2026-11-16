@@ -8,6 +8,9 @@ import { dshHome } from './util.mjs';
 
 export const DATA_DIR_NAME = 'dsh-healthkit';
 export const LEGACY_DIR_NAME = 'dsh-auditkit';
+// 旧**包名**（不是目录名）。init 自检要认出「用老名字装过的」那一版，
+// 但业务代码里仍不许裸写旧目录名——两者都在这里收口，守卫才能保持严格。
+export const LEGACY_PACKAGE_NAME = 'dsh-auditkit';
 
 // 迁移失败时回落旧目录（不丢历史），所以路径要能被覆盖。
 let activeDirName = DATA_DIR_NAME;

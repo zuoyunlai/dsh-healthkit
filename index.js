@@ -99,9 +99,86 @@ const TREND_SCHEMA = {
   required: ['action', 'summary'],
 };
 
+
+const FINDINGS_SCHEMA = {
+  type: 'object',
+  properties: {
+    total: { type: 'number' },
+    retired: { type: 'number' },
+    p0: { type: 'number' },
+    p1: { type: 'number' },
+    p2: { type: 'number' },
+    info: { type: 'number' },
+    items: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          fp: { type: 'string' },
+          ruleId: { type: 'string' },
+          severity: { type: 'string' },
+          dimension: { type: 'string' },
+          title: { type: 'string' },
+          target: { type: 'string' },
+          fixHint: { type: 'string' },
+        },
+        required: ['fp', 'ruleId', 'severity', 'title'],
+      },
+    },
+    summary: { type: 'string' },
+  },
+  required: ['total', 'p0', 'p1', 'p2', 'summary'],
+};
+
+const EXPLAIN_SCHEMA = {
+  type: 'object',
+  properties: {
+    found: { type: 'boolean' },
+    fp: { type: 'string' },
+    ruleId: { type: 'string' },
+    severity: { type: 'string' },
+    dimension: { type: 'string' },
+    title: { type: 'string' },
+    evidence: { type: 'array', items: { type: 'string' } },
+    measured: { type: 'string' },
+    confidence: { type: 'string' },
+    fixHint: { type: 'string' },
+    retired: { type: 'boolean' },
+    candidates: { type: 'array', items: { type: 'string' } },
+    summary: { type: 'string' },
+  },
+  required: ['found', 'summary'],
+};
+
+const PLAN_SCHEMA = {
+  type: 'object',
+  properties: {
+    base: { type: 'number' },
+    potentialAll: { type: 'number' },
+    steps: { type: 'array', items: { type: 'string' } },
+    summary: { type: 'string' },
+  },
+  required: ['steps', 'summary'],
+};
+
+
+const TRIM_SCHEMA = {
+  type: 'object',
+  properties: {
+    served: { type: 'number' },
+    maxBundles: { type: 'number' },
+    thirdParty: { type: 'number' },
+    memory: { type: 'number' },
+    groups: { type: 'array', items: { type: 'string' } },
+    suggestions: { type: 'array', items: { type: 'string' } },
+    summary: { type: 'string' },
+  },
+  required: ['served', 'suggestions', 'summary'],
+};
+
 // 工具表按「每次 apply 的依赖」构建：report 落点需要会话工作区解析器，
 // 不能写成模块级闭包（那样每个宿主实例会共享同一份依赖）。
-function buildTools(deps) {
+export function buildTools(deps) {
   const d = deps || {};
   const resolveWorkspace = (typeof d.resolveWorkspace === 'function') ? d.resolveWorkspace : function () { return null; };
   const pluginConfig = (d.config && typeof d.config === 'object') ? d.config : {};
@@ -298,6 +375,221 @@ function buildTools(deps) {
       };
     },
   },
+  {
+    name: 'audit_findings',
+    description: '列出体检发现的问题（按严重度排序），带指纹 fp、规则号、维度与修法提示。只读，不改配置；要「为什么扣分」用 audit_explain，要「先修哪条」用 audit_plan',
+    parameters: {
+      type: 'object',
+      properties: {
+        severity: { type: 'string', description: 'P0|P1|P2|INFO|all，缺省 all' },
+        limit: { type: 'number', description: '返回条数上限，缺省 20，最大 50' },
+        scenario: { type: 'string', description: 'general|code|design|writing，缺省 general' },
+      },
+      additionalProperties: false,
+    },
+    output: {
+      schema: FINDINGS_SCHEMA,
+      render(_args, v) {
+        const head = '发现 ' + v.total + ' 条（P0 ' + v.p0 + ' · P1 ' + v.p1 + ' · P2 ' + v.p2 + ' · INFO ' + v.info + '）· 已退役 ' + v.retired;
+        return text(head + '\n\n' + v.summary);
+      },
+    },
+    execute: async (args) => {
+      const { audit } = await import('./src/engine.mjs');
+      const a = args || {};
+      const r = audit({ scenario: a.scenario || 'general' });
+      const order = { P0: 0, P1: 1, P2: 2, INFO: 3 };
+      const all = r.findings.slice().sort((x, y) => {
+        const dx = order[x.severity] === undefined ? 9 : order[x.severity];
+        const dy = order[y.severity] === undefined ? 9 : order[y.severity];
+        return dx - dy;
+      });
+      const by = { P0: 0, P1: 0, P2: 0, INFO: 0 };
+      all.forEach((f) => { if (by[f.severity] !== undefined) by[f.severity] += 1; });
+      const sev = a.severity && a.severity !== 'all' ? a.severity : null;
+      const picked = sev ? all.filter((f) => f.severity === sev) : all;
+      const limit = Math.max(1, Math.min(50, typeof a.limit === 'number' ? a.limit : 20));
+      const items = picked.slice(0, limit).map((f) => ({
+        fp: f.fp,
+        ruleId: f.ruleId,
+        severity: f.severity,
+        dimension: f.dimension || '',
+        title: f.title || '',
+        target: f.target || '',
+        fixHint: f.fixHint || '',
+      }));
+      const lines = items.map((x, i) => (i + 1) + '. [' + x.severity + '] ' + x.ruleId + ' ' + x.title + (x.target ? ' @ ' + x.target : '') + '\n   fp: ' + x.fp);
+      if (picked.length > items.length) lines.push('… 还有 ' + (picked.length - items.length) + ' 条未列出（加大 limit 或按 severity 过滤）');
+      if (!items.length) lines.push(sev ? '（没有 ' + sev + ' 级问题）' : '（没有未退役的问题）');
+      return {
+        total: all.length,
+        retired: r.retired.length,
+        p0: by.P0,
+        p1: by.P1,
+        p2: by.P2,
+        info: by.INFO,
+        items,
+        summary: lines.join('\n'),
+      };
+    },
+  },
+  {
+    name: 'audit_explain',
+    description: '解释一条体检发现：它落在哪个维度、证据是什么、测到的数值、置信度与修法。传指纹 fp 或规则号（如 R14）；空参则列出当前全部候选',
+    parameters: {
+      type: 'object',
+      properties: {
+        finding: { type: 'string', description: '指纹 fp（如 R14#2f1a）或规则号（如 R14）' },
+        scenario: { type: 'string', description: 'general|code|design|writing，缺省 general' },
+      },
+      additionalProperties: false,
+    },
+    output: {
+      schema: EXPLAIN_SCHEMA,
+      render(_args, v) {
+        return text(v.summary);
+      },
+    },
+    execute: async (args) => {
+      const { audit } = await import('./src/engine.mjs');
+      const a = args || {};
+      const r = audit({ scenario: a.scenario || 'general' });
+      const all = r.allFindings || r.findings;
+      const key = String(a.finding || '').trim();
+      let hit = null;
+      if (key) {
+        hit = all.find((f) => f.fp === key) || null;
+        if (!hit) hit = all.find((f) => f.ruleId === key) || null;
+        if (!hit) {
+          const near = all.filter((f) => f.ruleId.indexOf(key) > -1 || f.fp.indexOf(key) > -1).slice(0, 10);
+          const cands = near.map((f) => f.severity + ' ' + f.ruleId + ' ' + f.fp + '  ' + f.title);
+          return {
+            found: false,
+            candidates: cands,
+            summary: '没找到「' + key + '」。' + (cands.length ? '相近的候选：\n' + cands.map((c) => '- ' + c).join('\n') : '当前没有问题可匹配；先跑 audit_findings 看全部。'),
+          };
+        }
+      } else {
+        const cands = all.slice(0, 12).map((f) => f.severity + ' ' + f.ruleId + ' ' + f.fp + '  ' + f.title);
+        return {
+          found: false,
+          candidates: cands,
+          summary: '需要指定要解释哪一条（fp 或规则号）。当前候选：\n' + cands.map((c) => '- ' + c).join('\n'),
+        };
+      }
+      const isRetired = !!hit.retired;
+      const measured = JSON.stringify(hit.measured || {}, null, 2);
+      const lines = [
+        '[' + hit.severity + '] ' + hit.ruleId + ' · ' + (hit.dimension || '?') + ' 维度',
+        hit.title || '',
+        'fp: ' + hit.fp,
+        '',
+        '证据：',
+        (hit.evidence && hit.evidence.length ? hit.evidence.map((x) => '- ' + x).join('\n') : '- （无路径证据，见下列数值）'),
+        '',
+        '测到的值：',
+        measured,
+        '',
+        '置信度：' + (hit.confidence || 'uncertain') + '（uncertain 表示规则只能报告现象，判读要你来做）',
+        '修法：' + (hit.fixHint || '（该规则没有固定修法，按证据自行判断）'),
+      ];
+      if (isRetired) lines.push('', '状态：已退役记档（' + JSON.stringify(hit.retired) + '），不再计入评分。');
+      return {
+        found: true,
+        fp: hit.fp,
+        ruleId: hit.ruleId,
+        severity: hit.severity,
+        dimension: hit.dimension || '',
+        title: hit.title || '',
+        evidence: (hit.evidence || []).slice(0, 20),
+        measured,
+        confidence: hit.confidence || 'uncertain',
+        fixHint: hit.fixHint || '',
+        retired: isRetired,
+        candidates: [],
+        summary: lines.join('\n'),
+      };
+    },
+  },
+  {
+    name: 'audit_plan',
+    description: '给出修复顺序：先解 P0 封顶，再按单条增量从大到小排。返回每步能涨多少分与全修完的终点（只读推演，不动配置）',
+    parameters: {
+      type: 'object',
+      properties: {
+        limit: { type: 'number', description: '第二步列几条，缺省 5，最大 12' },
+        scenario: { type: 'string', description: 'general|code|design|writing，缺省 general' },
+      },
+      additionalProperties: false,
+    },
+    output: {
+      schema: PLAN_SCHEMA,
+      render(_args, v) {
+        return text(v.summary);
+      },
+    },
+    execute: async (args) => {
+      const { audit } = await import('./src/engine.mjs');
+      const a = args || {};
+      const r = audit({ scenario: a.scenario || 'general' });
+      const at = r.attribution || {};
+      const limit = Math.max(1, Math.min(12, typeof a.limit === 'number' ? a.limit : 5));
+      const sign = (n) => (n > 0 ? '+' + n : String(n));
+      const steps = [];
+      if (at.stage1) {
+        steps.push('第一步｜清掉全部 ' + at.stage1.count + ' 条 P0：' + at.stage1.from + ' → ' + at.stage1.to + '（' + sign(at.stage1.delta) + (at.capped ? '，解除封顶' : '') + '）');
+        (at.stage1.items || []).forEach((s) => steps.push('   · ' + s));
+      } else {
+        steps.push('第一步｜没有 P0，不需要解封顶');
+      }
+      if (at.rows && at.rows.length) {
+        steps.push('第二步｜以 ' + at.stage2Base + ' 为基准，单条增量（互不叠加）：');
+        at.rows.slice(0, limit).forEach((x) => {
+          steps.push('   · ' + sign(x.delta) + '  ' + x.ruleId + ' ' + (x.title || '') + (x.target ? '（' + x.target + '）' : ''));
+        });
+        if (at.rows.length > limit) steps.push('   … 另有 ' + (at.rows.length - limit) + ' 条计分项');
+      }
+      if (typeof at.potentialAll === 'number') steps.push('全部修完 → ' + at.potentialAll + ' / 10');
+      return {
+        base: typeof at.stage2Base === 'number' ? at.stage2Base : r.score.total,
+        potentialAll: typeof at.potentialAll === 'number' ? at.potentialAll : r.score.total,
+        steps,
+        summary: '当前 ' + r.score.total + '/10。' + steps.join('\n'),
+      };
+    },
+  },
+  {
+    name: 'audit_trim',
+    description: '装载面瘦身分析：报服务插件数 vs bundles 上限、同能力多实现、记忆插件叠放，给出「谁是主力、谁是可关候选」。只读，不写 cordis.patch.yml',
+    parameters: {
+      type: 'object',
+      properties: {
+        scenario: { type: 'string', description: 'general|code|design|writing，缺省 general' },
+      },
+      additionalProperties: false,
+    },
+    output: {
+      schema: TRIM_SCHEMA,
+      render(_args, v) {
+        return text(v.summary);
+      },
+    },
+    execute: async (args) => {
+      const { audit } = await import('./src/engine.mjs');
+      const trim = await import('./src/trim.mjs');
+      const r = audit({ scenario: (args && args.scenario) || 'general' });
+      const a = trim.analyze(r.facts);
+      return {
+        served: typeof a.served === 'number' ? a.served : 0,
+        maxBundles: a.maxBundles,
+        thirdParty: a.thirdParty.length,
+        memory: a.memory.length,
+        groups: a.groups.map((g) => g.tag + ' ×' + g.count + ' · 主力 ' + g.keep + ' · 候选 ' + (g.drop.join('、') || '无')),
+        suggestions: a.suggestions,
+        summary: trim.render(a),
+      };
+    },
+  },
   ];
 }
 
@@ -385,6 +677,32 @@ export function apply(ctx, config) {
     try { registerAll(ctx); } catch (e) { failures.push('direct tools access: ' + msg(e)); }
   }
 
+  // 面板（只读运维面）：webServer 在 apply 时刻常常还没起，同样用 inject 等它。
+  // 面板挂不上不影响工具面——降级成「没有面板」，写进 status 的 panel 字段。
+  state.panel = { ok: false, reason: 'pending' };
+  if (typeof ctx.inject === 'function') {
+    try {
+      ctx.inject(['webServer'], (injected) => {
+        Promise.resolve()
+          .then(() => import('./src/panel.mjs'))
+          .then((m) => {
+            const rep = m.registerPanel(injected);
+            state.panel = rep;
+            writeStatus({ panel: rep });
+          })
+          .catch((e) => {
+            state.panel = { ok: false, reason: msg(e) };
+            writeStatus({ panel: state.panel });
+          });
+      });
+    } catch (e) {
+      state.panel = { ok: false, reason: 'ctx.inject(["webServer"]): ' + msg(e) };
+      failures.push(state.panel.reason);
+    }
+  } else {
+    state.panel = { ok: false, reason: 'ctx.inject is not a function' };
+  }
+
   writeStatus({
     phase: 'apply-done',
     hookedViaInject: hooked,
@@ -393,5 +711,6 @@ export function apply(ctx, config) {
     registered,
     failures,
     notes,
+    panel: state.panel,
   });
 }

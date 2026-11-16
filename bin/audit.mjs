@@ -71,9 +71,59 @@ var USAGE = [
   '  dsh-healthkit --clean-list',
   '  dsh-healthkit --clean-restore <批次号>',
   '  dsh-healthkit --clean-purge [--older-than N] [--dry-run]',
+  '',
+  '解释与规划：',
+  '  dsh-healthkit --findings [--severity P1] [--limit N]',
+  '  dsh-healthkit --explain <指纹或规则号>',
+  '  dsh-healthkit --plan [--limit N]',
+  '',
+  '装载面瘦身：',
+  '  dsh-healthkit --trim            同能力多实现 / 超限 / 记忆叠放，给主备候选',
+  '',
+  '接入自检：',
+  '  dsh-healthkit --init            报环境/装没装/还差哪一步（不改任何文件）',
 ].join('\n');
 
 if (has('help') || has('h')) { console.log(USAGE); process.exit(0); }
+
+// 解释型动作直接复用插件工具的实现，避免 CLI 与工具面两套文案漂移。
+if (has('findings') || has('explain') || has('plan')) {
+  try {
+    var mod2 = await import('../index.js');
+    var built = {};
+    mod2.buildTools({}).forEach(function (t) { built[t.name] = t; });
+    var res2 = null;
+    if (has('plan')) res2 = await built.audit_plan.execute({ limit: Number(arg('limit', '5')) });
+    else if (has('explain')) res2 = await built.audit_explain.execute({ finding: arg('explain', '') });
+    else res2 = await built.audit_findings.execute({ severity: arg('severity', 'all'), limit: Number(arg('limit', '20')) });
+    if (has('json')) console.log(JSON.stringify(res2, null, 2));
+    else console.log(res2.summary);
+    process.exit(res2 && res2.found === false ? 2 : 0);
+  } catch (e) { console.error('failed: ' + e.message); process.exit(1); }
+}
+
+if (has('trim')) {
+  try {
+    var trimMod = await import('../src/trim.mjs');
+    var snap2 = audit({ scenario: arg('scenario', 'general') });
+    var ta = trimMod.analyze(snap2.facts);
+    if (has('json')) console.log(JSON.stringify({ served: ta.served, maxBundles: ta.maxBundles, groups: ta.groups, suggestions: ta.suggestions }, null, 2));
+    else console.log(trimMod.render(ta));
+    process.exit(0);
+  } catch (e) { console.error('trim failed: ' + e.message); process.exit(1); }
+}
+
+if (has('init')) {
+  // 必须 await：写成 .then() 会让下面的默认体检分支继续跑，
+  // 结果是「--init 顺手跑了一次体检、写了报告还记了账」。
+  try {
+    var mod = await import('../src/init.mjs');
+    var initRes = mod.inspect(home());
+    if (has('json')) console.log(JSON.stringify(initRes, null, 2));
+    else console.log(mod.renderInit(initRes));
+    process.exit(initRes.ready ? 0 : 1);
+  } catch (e) { console.error('init failed: ' + e.message); process.exit(1); }
+}
 
 if (has('links')) {
   var snap = audit({ scenario: 'general' });
