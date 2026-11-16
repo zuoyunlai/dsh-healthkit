@@ -1,5 +1,20 @@
 # CHANGELOG
 
+## 0.8.6 — 2026-11-16
+
+### 修：audit_capabilities 的「有实现」计数恒为 0
+
+0.8.5 把能力域从四态改成六态（`present/missing/redundant/degraded/conflicting/unknown`），
+但工具输出里的字段还叫 `ok`，而 `byStatus.ok` 在六态里**根本不存在** ⇒ 永远取到 0。
+真机复核时 `audit_capabilities` 报「有实现 0」，一眼看出不对。
+
+- 字段改为六态口径：`present` / `redundant` / `conflicting` / `degraded` / `missing` / `unknown`，
+  保留 `ok` 作为兼容别名（避免已有调用方断掉）。
+- `CAPS_SCHEMA` 的 required 同步改成 `present`。
+- 测试补断言：**六态计数之和必须等于 20**——这类「字段名与数据不同步」的问题，
+  一条断言就能挡住。
+- 顺手排查了其余 10 个工具的输出字段与实际数据是否对得上，都一致。
+
 ## 0.8.5 — 2026-11-16
 
 ### 修：快照顺序（CI 第四次红）

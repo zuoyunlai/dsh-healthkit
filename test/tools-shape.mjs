@@ -53,9 +53,15 @@ assert.ok(Array.isArray(tm.suggestions) && tm.suggestions.length > 0, 'trim 应�
 assert.equal(typeof tm.served, 'number');
 
 const cp = await byName.audit_capabilities.execute({});
-assert.equal(typeof cp.ok, 'number');
+// 六态计数必须齐全（0.8.5 里 ok 恒为 0 —— matrix 早已没有 ok 状态，字段没跟着改）
+assert.equal(typeof cp.present, 'number', '缺 present 计数');
 assert.equal(typeof cp.redundant, 'number');
+assert.equal(typeof cp.conflicting, 'number');
+assert.equal(typeof cp.degraded, 'number');
 assert.equal(typeof cp.missing, 'number');
+assert.equal(typeof cp.unknown, 'number');
+assert.ok(cp.present + cp.redundant + cp.conflicting + cp.degraded + cp.missing + cp.unknown === 20,
+  '六态计数之和应等于 20，实得 ' + (cp.present + cp.redundant + cp.conflicting + cp.degraded + cp.missing + cp.unknown));
 assert.ok(cp.rows.length === 20, '能力域应为 20 个，实得 ' + cp.rows.length);
 assert.ok(/装插件|阶梯/.test(cp.summary), '摘要里应有补救阶梯');
 

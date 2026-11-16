@@ -180,14 +180,17 @@ const TRIM_SCHEMA = {
 const CAPS_SCHEMA = {
   type: 'object',
   properties: {
-    ok: { type: 'number' },
+    present: { type: 'number' },
     redundant: { type: 'number' },
+    conflicting: { type: 'number' },
+    degraded: { type: 'number' },
     missing: { type: 'number' },
     unknown: { type: 'number' },
+    ok: { type: 'number' },
     rows: { type: 'array', items: { type: 'string' } },
     summary: { type: 'string' },
   },
-  required: ['ok', 'redundant', 'missing', 'summary'],
+  required: ['present', 'redundant', 'missing', 'summary'],
 };
 
 
@@ -679,10 +682,16 @@ export function buildTools(deps) {
       const mx = cm.buildMatrix(r.facts);
       const b = mx.byStatus;
       return {
-        ok: b.ok || 0,
+        // 字段名与六态口径一致（present/redundant/conflicting/degraded/missing/unknown）。
+        // 0.8.5 之前这里叫 ok，但 matrix 里已无 ok 状态 ⇒ 恒为 0（实测发现）。
+        present: b.present || 0,
         redundant: b.redundant || 0,
+        conflicting: b.conflicting || 0,
+        degraded: b.degraded || 0,
         missing: b.missing || 0,
         unknown: b.unknown || 0,
+        // 兼容旧字段名（不删，避免已有调用方断掉）
+        ok: b.present || 0,
         rows: mx.rows.map((x) => x.status.padEnd(9) + ' ' + x.label + (x.count ? ' ×' + x.count : '')),
         summary: cm.renderMatrix(mx),
       };
