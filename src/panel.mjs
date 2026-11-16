@@ -18,6 +18,28 @@ const PREFIX = '/dsh-healthkit-panel';
 const CACHE_MS = 60 * 1000;
 const SEV_ORDER = { P0: 0, P1: 1, P2: 2, INFO: 3 };
 
+// 数值兜底：评分链出问题时不要印 "NaN"。2026-11-16 实测：重复挂载的旧实例算出
+// NaN，页面直接渲染成 <div class="v">NaN</div>，读者会当成插件坏了。
+function num(v, digits) {
+  const n = typeof v === 'number' ? v : Number(v);
+  if (!Number.isFinite(n)) return '—';
+  return digits == null ? String(n) : n.toFixed(digits);
+}
+
+// 本地时间：payload 的 at 是 toISOString 的 UTC，直接 slice(11,16) 会早 8 小时。
+function fmtLocal(iso) {
+  const t = new Date(iso);
+  if (Number.isNaN(t.getTime())) return String(iso || '');
+  const p2 = (x) => String(x).padStart(2, '0');
+  return p2(t.getMonth() + 1) + '-' + p2(t.getDate()) + ' ' + p2(t.getHours()) + ':' + p2(t.getMinutes());
+}
+
+function localHHMM(v) {
+  const t = new Date(v);
+  if (Number.isNaN(t.getTime())) return String(v || '').slice(5);
+  return String(t.getHours()).padStart(2, '0') + ':' + String(t.getMinutes()).padStart(2, '0');
+}
+
 let cache = { at: 0, data: null };
 
 function sendJson(res, status, obj) {
@@ -190,6 +212,14 @@ export function collectSummary() {
     trim,
     capabilities: caps,
     retiredList: r.retired.map((f) => ({ fp: f.fp, ruleId: f.ruleId, title: f.title || '' })),
+    // 维度分：引擎早就算好了（score.mjs 的 dims），只是从前没透传出去，
+    // 于是面板只能给一个总分——「分数怎么来的」永远看不见。
+    // 注意：不能让前端用 items 自行聚合，那是错的（disk 的 7 条全是 INFO、
+    // 计分 0，按 items 计数会把最健康的维度画成最差）。
+    dims: (r.score.dims || []).map((x) => ({
+      key: x.key, label: x.label, weight: x.weight,
+      score: x.score, count: x.count, cappedBy: x.cappedBy || null,
+    })),
   };
   cache = { at: now, data };
   return data;
@@ -264,7 +294,7 @@ function trendChart(series) {
   const first = pts[0], last = pts[pts.length - 1];
   const lo = Math.min.apply(null, pts.map((p) => p.total));
   const hi = Math.max.apply(null, pts.map((p) => p.total));
-  const stamp = (p) => String(p.at || p.day || '').slice(11, 16) || String(p.day || '').slice(5);
+  const stamp = (p) => localHHMM(p && (p.at || p.day));
   return [
     '<svg viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none" role="img" aria-label="分数趋势" style="width:100%;height:34px;display:block;color:var(--dim)">',
     ref(10), ref(8), ref(5),
@@ -297,20 +327,23 @@ export function pageHtml(data) {
   const d = data || collectSummary();
   const sevRow = SEVS.map(function (k) {
     const n = k === 'INFO' ? d.info : d[k.toLowerCase()];
-    return sevBadge(k) + ' <b>' + n + '</b>';
+    return sevBadge(k) + ' <b>' + num(n) + '</b>';
   }).join(' ');
 
   const delta = typeof d.trend.delta === 'number' ? d.trend.delta : null;
-  const trendTxt = d.trend.latest + (delta === null ? '（首次）' : (delta >= 0 ? ' (+' + delta + ')' : ' (' + delta + ')'));
+  const runs = typeof d.trend.runs === 'number' ? d.trend.runs : null;
+  const trendTxt = num(d.trend.latest, 2) + (delta !== null
+    ? (delta >= 0 ? ' (+' + delta + ')' : ' (' + delta + ')')
+    : (runs && runs > 1 ? '（首日基线）' : '（首次）'));
   const cleanTxt = d.clean ? mbOf(d.clean.bytes) : '未知';
   const cleanSub = d.clean ? d.clean.groups.length + ' 组可清理' : '';
-  const trimV = d.trim ? d.trim.served + ' / ' + d.trim.maxBundles : '—';
+  const trimV = d.trim ? num(d.trim.served) + ' / ' + num(d.trim.maxBundles) : '—';
   const trimSub = d.trim ? d.trim.groups.length + ' 组能力冗余' : '';
 
   const cards = [
-    '<div class="card"><div class="k">总分（10 分制）</div><div class="v">' + d.score + '</div><div class="row">' + sevRow + '</div></div>',
+    '<div class="card"><div class="k">总分（10 分制）</div><div class="v">' + num(d.score, 2) + '</div><div class="row">' + sevRow + '</div></div>',
     '<div class="card"><div class="k">分档</div><div class="v">' + esc(d.band) + '</div><div class="dim">' + esc(d.headline) + '</div></div>',
-    '<div class="card"><div class="k">未解决 / 已退役</div><div class="v">' + d.count + ' <small>/ ' + d.retired + '</small></div></div>',
+    '<div class="card"><div class="k">未解决 / 已退役</div><div class="v">' + num(d.count) + ' <small>/ ' + num(d.retired) + '</small></div></div>',
     '<div class="card"><div class="k">最新分 / 记账</div><div class="v">' + esc(trendTxt) + '</div><div class="dim">' + d.trend.runs + ' 次 / ' + d.trend.daysTracked + ' 天</div>' + trendChart(d.trend.recent) + '</div>',
     '<div class="card"><div class="k">可清理空间</div><div class="v">' + esc(cleanTxt) + '</div><div class="dim">' + esc(cleanSub) + '</div></div>',
     '<div class="card"><div class="k">服务插件 / 上限</div><div class="v">' + esc(trimV) + '</div><div class="dim">' + esc(trimSub) + '</div></div>',
@@ -376,7 +409,7 @@ export function pageHtml(data) {
     '<title>DSH 体检</title><style>' + CSS + '</style></head><body>',
     '<header><h1>DSH 体检</h1><span class="dim">只读 · 不写配置 · 不联网</span>',
     '<span style="flex:1"></span><a class="btn" href="?r=' + Date.now() + '">刷新</a></header>',
-    '<div class="dim" style="margin-bottom:14px">' + esc(d.headline) + ' · 更新 ' + esc(String(d.at).replace('T', ' ').slice(0, 19)) + '</div>',
+    '<div class="dim" style="margin-bottom:14px">' + esc(d.headline) + ' · 更新 ' + esc(fmtLocal(d.at)) + '</div>',
     '<div class="grid">' + cards + '</div>',
     '<h2>问题清单（点开看根因与修法）</h2>' + issues,
     '<h2>修复顺序</h2><div class="card"><ol>' + planLines.join('') + '</ol></div>',
@@ -411,8 +444,16 @@ export function registerPanel(webServer) {
   ];
   for (const r of routes) {
     try { webServer.register(r); report.routes += 1; report.attempts.push({ path: r.path, ok: true }); }
-    catch (e) { report.attempts.push({ path: r.path, ok: false, error: String((e && e.message) || e) }); }
+    catch (e) {
+      const msg = String((e && e.message) || e);
+      const duplicate = /duplicate/i.test(msg);
+      if (duplicate) report.duplicate = true;
+      report.attempts.push({ path: r.path, ok: false, duplicate, error: msg });
+    }
   }
-  report.ok = report.routes > 0;
+  // 路由已被本插件的另一实例注册（重复挂载）时，面板其实是活的：不该报「全失败」
+  // 让运维去查一个不存在的问题，但也不能假装自己挂上了——如实记 duplicate。
+  report.ok = report.routes > 0 || report.duplicate === true;
+  if (report.routes === 0) report.reason = report.duplicate ? 'already-registered' : 'register-failed';
   return report;
 }

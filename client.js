@@ -27,9 +27,20 @@ window.__ModuleLoader__.load({
         advisory: '建议项（不计分）', confidence: '置信度', score: '总分', band: '分档',
         open: '未解决', cleanable: '可清理', plugins: '插件 / 上限', trend: '最新分',
         step1: '第一步', step2: '第二步', all: '全部修完', none: '没有未解决的问题',
-        first: '首次', capped: '解除封顶', onlyOne: '只有 1 个数据点，再跑几次才有折线',
+        first: '首次', firstDay: '首日基线', capped: '解除封顶', onlyOne: '只有 1 个数据点，再跑几次才有折线',
+        gainTitle: '可涨', trendTitle: '分数趋势', axisNote: '轴固定 0–10 · 近 {n} 次',
+        basedOn: '以 {v} 为基准', fixTiny: '单条收益都低于 0.05 分，没有可画的横条',
         caps: '能力域', noRedundant: '没有缺口的域',
         capsHint: '四级补救阶梯用 audit_capabilities：配置 → provider → 插件 → 习惯',
+        stable: '近 {n} 次稳定在 {a}–{b}，无可见波动',
+        infoGroup: '其余 {n} 条 INFO（不计分，仅提示）',
+        scored: '{a} 计分 / {b} 总',
+        cappedBefore: '封顶前 {v}',
+        over: '超 {a} 个',
+        gain: '可涨 +{a}',
+        fixes: '修复收益（互不叠加）',
+        dimsHead: '维度分', dimsHint: '权重 {w}%',
+        lowest: '最低 {a}',
       },
       en: {
         title: 'Checkup', refresh: 'Refresh', loading: 'Loading…', retry: 'Retry', error: 'Panel error: ',
@@ -39,9 +50,20 @@ window.__ModuleLoader__.load({
         advisory: 'advisory', confidence: 'confidence', score: 'Score', band: 'Band',
         open: 'Open', cleanable: 'Cleanable', plugins: 'Plugins / limit', trend: 'Latest',
         step1: 'Step 1', step2: 'Step 2', all: 'Fix everything', none: 'No open findings',
-        first: 'first run', capped: 'uncapped', onlyOne: 'Only 1 data point — run a few more times',
+        first: 'first run', firstDay: 'first-day baseline', capped: 'uncapped', onlyOne: 'Only 1 data point — run a few more times',
+        gainTitle: 'Available', trendTitle: 'Score trend', axisNote: '0–10 axis · last {n}',
+        basedOn: 'baseline {v}', fixTiny: 'Every single fix is worth < 0.05 — no bars to draw',
         caps: 'Capabilities', noRedundant: 'No gaps',
         capsHint: 'Four-step ladder via audit_capabilities: config → provider → plugin → habit',
+        stable: 'Steady at {a}–{b} over {n} runs',
+        infoGroup: '{n} more INFO findings (not scored)',
+        scored: '{a} scored / {b} total',
+        cappedBefore: 'uncapped {v}',
+        over: '{a} over limit',
+        gain: '+{a} available',
+        fixes: 'Fix value (not additive)',
+        dimsHead: 'Dimension scores', dimsHint: 'weight {w}%',
+        lowest: 'lowest {a}',
       },
     };
 
@@ -82,104 +104,260 @@ window.__ModuleLoader__.load({
       );
     }
 
-    function badge(text, color) {
-      return h('span', {
-        style: {
-          display: 'inline-block', minWidth: 40, padding: '1px 6px', borderRadius: 5,
-          fontSize: 11, fontWeight: 700, textAlign: 'center', color, background: color + '22',
-        },
-      }, text);
+    // 数值兜底：服务端算出 NaN/undefined 时不要让面板印出 "NaN"（0.8.6 实测踩过：
+    // 重复挂载的旧实例算不出分，页面直接显示 NaN）。
+    function num(v, digits) {
+      const n = typeof v === 'number' ? v : Number(v);
+      if (!isFinite(n)) return '—';
+      return digits == null ? String(n) : n.toFixed(digits);
     }
 
-    function metric(label, value, sub) {
+    function fmt(n, digits) {
+      return num(n, digits);
+    }
+
+    // 严重度徽章：零值不再满色抢视觉（P0 0 / P1 0 在健康机器上恒为 0），
+    // 非零时把色相放到「竖条 + 浅底」上，文字仍用宿主保证过对比度的 C.fg
+    // —— 11px 粗体不属于 WCAG 的「大字」，色相不能直接当文字色。
+    function badge(text, color, zero) {
+      if (zero) {
+        return h('span', {
+          style: {
+            display: 'inline-flex', alignItems: 'center', minWidth: 40, padding: '1px 6px',
+            borderRadius: 5, fontSize: 11, fontWeight: 700, textAlign: 'center',
+            color: C.dim, opacity: 0.5, background: 'transparent', border: '1px solid ' + C.line,
+          },
+        }, text);
+      }
+      return h('span', {
+        style: {
+          display: 'inline-flex', alignItems: 'center', gap: 5, minWidth: 40, padding: '1px 6px',
+          borderRadius: 5, fontSize: 11, fontWeight: 700, textAlign: 'center',
+          color: C.fg, background: color + '1f', border: '1px solid ' + color + '4d',
+        },
+      },
+        h('span', { style: { width: 2, height: 9, borderRadius: 1, background: color, flex: 'none' } }, null),
+        text);
+    }
+
+    // tone='bad' 让「已经超限」的指标自己说话（装载面 56/43 是本机最该动的事）；
+    // pct 给一条限位轨道，用填充表达「满/超」，不新增高度预算。
+    function metric(label, value, sub, tone, pct) {
+      const bad = tone === 'bad';
       return h('div', {
-        style: { border: '1px solid ' + C.line, borderRadius: 10, padding: '8px 10px', background: C.card, minWidth: 0 },
+        style: {
+          border: '1px solid ' + (bad ? C.bad + '55' : C.line), borderRadius: 10,
+          padding: '8px 10px', background: C.card, minWidth: 0,
+        },
       },
         h('div', { style: { fontSize: 11, color: C.dim, marginBottom: 2 } }, label),
-        h('div', { style: { fontSize: 17, fontWeight: 700, color: C.fg, lineHeight: 1.25 } }, value),
-        sub ? h('div', { style: { fontSize: 11, color: C.dim, marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis' } }, sub) : null,
+        h('div', {
+          style: {
+            fontSize: 16, fontWeight: 700, lineHeight: 1.25, color: bad ? C.bad : C.fg,
+            fontVariantNumeric: 'tabular-nums',
+          },
+        }, value),
+        typeof pct === 'number'
+          ? h('div', { style: { marginTop: 5, height: 4, borderRadius: 2, background: C.line, overflow: 'hidden' } },
+              h('div', {
+                style: {
+                  width: Math.max(2, Math.min(100, pct)) + '%', height: '100%', borderRadius: 2,
+                  background: bad ? C.bad : C.accent,
+                },
+              }, null))
+          : null,
+        sub ? h('div', {
+          style: {
+            fontSize: 11, color: C.dim, marginTop: 2,
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          },
+        }, sub) : null,
       );
     }
 
     function mb(n) {
       if (typeof n !== 'number' || !isFinite(n) || n <= 0) return '0 B';
       if (n >= 1073741824) return (n / 1073741824).toFixed(1) + ' GB';
-      return (n / 1048576).toFixed(1) + ' MB';
+      if (n >= 1048576) return (n / 1048576).toFixed(1) + ' MB';
+      if (n >= 1024) return Math.round(n / 1024) + ' KB';
+      return Math.round(n) + ' B';
     }
 
-    // SVG 折线：y 轴固定 0–10（不按 min/max 自适应，否则 8.3→8.4 会被画成陡坡）。
-    // 用「按次」数据而不是按天折叠：改完配置当天再跑一次就能看见变化。
+    // 分数趋势 = 分档带 + 细折线。
+    // 为什么不再用裸折线：0–10 固定域 + 34px 高 ⇒ 1 分 = 2.95px；9.78 落在离顶 2.9px 处，
+    // 9.6→9.78 只差 0.53px（亚像素）——图占 60px 却不传达信息。分档带把 y 轴变成
+    // 「我在哪一档、离下一档多远」，折线只负责形态。
+    // 段界与 config/rubric.json 的 bands 对齐（0/5/7/8.5/10）。
+    const BANDS = [
+      { from: 0, to: 5, color: C.bad, label: '0–5' },
+      { from: 5, to: 7, color: C.warn, label: '5–7' },
+      { from: 7, to: 8.5, color: C.accent, label: '7–8.5' },
+      { from: 8.5, to: 10, color: C.ok, label: '8.5–10' },
+    ];
+
+    // history.jsonl 里的 at 是 UTC（toISOString 写入），直接 slice(11,16) 会让面板
+    // 比本地时间早 8 小时，所以这里按浏览器本地时区重算。
+    function stamp(p) {
+      const raw = p && (p.at || p.day);
+      if (!raw) return '';
+      const t = new Date(raw);
+      if (isNaN(t.getTime())) return String(raw).slice(5);
+      return String(t.getHours()).padStart(2, '0') + ':' + String(t.getMinutes()).padStart(2, '0');
+    }
+
     function trendChart(pts, lang) {
-      const list = (pts || []).filter(function (p) { return typeof p.total === 'number'; });
+      const list = (pts || []).filter(function (p) { return typeof p.total === 'number' && isFinite(p.total); });
       if (list.length < 2) {
         return h('div', { style: { fontSize: 11, color: C.dim, marginTop: 6 } }, lang.onlyOne);
       }
-      const W = 100, H = 30, PAD = 2;
-      const x = function (i) { return PAD + (i / (list.length - 1)) * (W - 2 * PAD); };
-      const y = function (v) { return H - PAD - (Math.max(0, Math.min(10, v)) / 10) * (H - 2 * PAD); };
-      const points = list.map(function (p, i) { return x(i).toFixed(2) + ',' + y(p.total).toFixed(2); }).join(' ');
-      const ref = function (v) {
-        return h('line', {
-          key: 'r' + v, x1: PAD, y1: y(v), x2: W - PAD, y2: y(v),
-          stroke: 'currentColor', strokeOpacity: 0.18, strokeWidth: 0.4,
-          strokeDasharray: '2 2', vectorEffect: 'non-scaling-stroke',
-        });
-      };
-      const stamp = function (p) { return String(p.at || p.day || '').slice(11, 16) || String(p.day || '').slice(5); };
+      const W = 100, H = 30, PADX = 1.5;
+      const x = function (i) { return PADX + (i / (list.length - 1)) * (W - 2 * PADX); };
+      const y = function (v) { return H - (Math.max(0, Math.min(10, v)) / 10) * H; };
       const vals = list.map(function (p) { return p.total; });
       const lo = Math.min.apply(null, vals), hi = Math.max.apply(null, vals);
+      const spread = hi - lo;
+
+      const bands = BANDS.map(function (b) {
+        return h('rect', {
+          key: 'b' + b.from, x: (b.from / 10) * W, y: 0,
+          width: ((b.to - b.from) / 10) * W, height: H,
+          fill: b.color, fillOpacity: 0.1,
+        });
+      });
+      const ticks = [5, 7, 8.5].map(function (v) {
+        return h('line', {
+          key: 't' + v, x1: 0, y1: y(v), x2: W, y2: y(v),
+          stroke: 'currentColor', strokeOpacity: 0.22, strokeWidth: 1,
+          strokeDasharray: '2 2', vectorEffect: 'non-scaling-stroke',
+        });
+      });
+      const lastX = x(list.length - 1);
+      const marker = h('line', {
+        x1: lastX, y1: 0, x2: lastX, y2: H,
+        stroke: 'currentColor', strokeOpacity: 0.45, strokeWidth: 1,
+        strokeDasharray: '1.5 1.5', vectorEffect: 'non-scaling-stroke',
+      });
+      // 极差 < 1 分时不出折线：亚像素抖动会伪装成「有起伏」，此时一句话更诚实。
+      const shape = spread >= 1
+        ? h('polyline', {
+          points: list.map(function (p, i) { return x(i).toFixed(2) + ',' + y(p.total).toFixed(2); }).join(' '),
+          fill: 'none', stroke: C.accent, strokeWidth: 1.6,
+          strokeLinejoin: 'round', strokeLinecap: 'round', vectorEffect: 'non-scaling-stroke',
+        })
+        : null;
+
+      const legend = h('div', {
+        style: { display: 'flex', gap: 8, marginTop: 4, flexWrap: 'wrap', fontSize: 10, color: C.dim },
+      },
+        BANDS.map(function (b) {
+          return h('span', { key: 'l' + b.from, style: { display: 'inline-flex', alignItems: 'center', gap: 3 } },
+            h('span', {
+              style: { width: 6, height: 6, borderRadius: 2, background: b.color, opacity: 0.75, flex: 'none' },
+            }, null),
+            b.label);
+        }),
+      );
+
       return h('div', { style: { marginTop: 8 } },
         h('svg', {
           viewBox: '0 0 ' + W + ' ' + H, preserveAspectRatio: 'none',
-          style: { width: '100%', height: 34, display: 'block', color: C.dim },
+          style: { width: '100%', height: 40, display: 'block', color: C.dim },
+          role: 'img',
+          'aria-label': '分数趋势：近 ' + list.length + ' 次，' + lo + ' 到 ' + hi + '（10 分制）',
+        }, bands, ticks, marker, shape),
+        spread < 1
+          ? h('div', { style: { fontSize: 11, color: C.dim, marginTop: 3 } },
+            String(lang.stable).replace('{n}', String(list.length)).replace('{a}', String(lo)).replace('{b}', String(hi)))
+          : null,
+        legend,
+        h('div', {
+          style: {
+            display: 'flex', justifyContent: 'space-between', fontSize: 10, color: C.dim, marginTop: 2,
+          },
         },
-          ref(10), ref(8), ref(5),
-          h('polyline', {
-            points: points, fill: 'none', stroke: C.accent, strokeWidth: 1.4,
-            strokeLinejoin: 'round', strokeLinecap: 'round', vectorEffect: 'non-scaling-stroke',
-          })),
-        h('div', { style: { display: 'flex', justifyContent: 'space-between', fontSize: 10, color: C.dim } },
           h('span', null, stamp(list[0]) + ' · ' + list[0].total),
           h('span', null, '低 ' + lo + ' / 高 ' + hi + ' · ' + list.length + ' 次'),
           h('span', null, stamp(list[list.length - 1]) + ' · ' + list[list.length - 1].total)),
       );
     }
 
-    function section(title) {
-      return h('div', { style: { fontSize: 11, fontWeight: 700, color: C.dim, margin: '14px 0 6px', letterSpacing: '.02em' } }, title);
+    // ---- 排版音阶 ----------------------------------------------------------
+    // 原先 8 级字号（含 10.5/11.5/12.5 半像素）、4 种圆角、5/6/7/8 混用间距。
+    // 现在：字号 6 级、圆角 3 级、间距落 8 栅格。
+    const FS = { tiny: 10, small: 11, body: 12, label: 13, num: 16, hero: 31 };
+    const RADIUS = { card: 10, nested: 8, pill: 5 };
+
+    // 后端枚举 → 中文（en 侧原值本身就是英文，不映射）。
+    const DIM_ZH = {
+      security: '安全', consistency: '一致性', modelCost: '模型成本', plugins: '插件',
+      reliability: '可靠性', disk: '磁盘', context: '上下文',
+    };
+    const STATUS_ZH = {
+      present: '有', redundant: '多实现', conflicting: '冲突',
+      degraded: '失效', missing: '缺失', unknown: '未知',
+    };
+    const CAPS_ROWS = [
+      ['present', '有', C.ok], ['redundant', '多', C.accent], ['conflicting', '冲突', C.warn],
+      ['degraded', '失效', C.warn], ['missing', '无', C.bad], ['unknown', '未知', C.dim],
+    ];
+
+    // 章节标题：窄栏里「一条线」比「更粗的字」省视觉预算；右侧带计数便于跳读。
+    function section(title, note) {
+      return h('div', {
+        style: {
+          display: 'flex', alignItems: 'baseline', gap: 6,
+          fontSize: FS.small, fontWeight: 700, color: C.fg, letterSpacing: '.03em',
+          paddingTop: 12, borderTop: '1px solid ' + C.line, margin: '18px 0 8px',
+        },
+      },
+        h('span', null, title),
+        note ? h('span', { style: { marginLeft: 'auto', fontSize: FS.tiny, fontWeight: 400, color: C.dim } }, note) : null);
     }
 
     function kv(label, node) {
       return h('div', { style: { margin: '6px 0' } },
-        h('div', { style: { fontSize: 10, color: C.dim, fontWeight: 600 } }, label),
-        h('div', { style: { fontSize: 12, color: C.fg, whiteSpace: 'pre-wrap', wordBreak: 'break-all' } }, node));
+        h('div', { style: { fontSize: FS.tiny, color: C.dim, fontWeight: 600 } }, label),
+        h('div', { style: { fontSize: FS.body, color: C.fg, whiteSpace: 'pre-wrap', wordBreak: 'break-word' } }, node));
     }
 
     function findingItem(it, lang) {
+      const dimLabel = DIM_ZH[it.dimension] || it.dimension || '—';
       const summary = h('summary', {
+        className: 'hk-row',
         style: { cursor: 'pointer', display: 'flex', gap: 8, alignItems: 'flex-start', listStyle: 'none' },
       },
-        badge(it.severity, SEV_COLOR[it.severity] || C.dim),
+        badge(it.severity, SEV_COLOR[it.severity] || C.dim, it.severity === 'INFO'),
         h('div', { style: { minWidth: 0, flex: 1 } },
-          h('div', { style: { fontSize: 12.5, color: C.fg, lineHeight: 1.45 } },
-            h('b', null, it.ruleId), ' ', it.title),
-          h('div', { style: { fontSize: 11, color: C.dim, marginTop: 2 } },
-            (it.dimension || '') + (it.fixHint ? ' · ' + String(it.fixHint).slice(0, 40) : '')),
+          // 用 line-clamp 按宽度断行：slice(0,40) 会切在词中间且没有省略号。
+          h('div', {
+            style: {
+              fontSize: FS.label, color: C.fg, lineHeight: 1.45,
+              display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden',
+            },
+          }, h('b', null, it.ruleId), ' ', it.title),
+          h('div', { style: { fontSize: FS.small, color: C.dim, marginTop: 2 } },
+            dimLabel + (it.confidence ? ' · ' + it.confidence : '')),
         ),
+        h('span', { className: 'hk-chev', style: { flex: 'none', fontSize: FS.body, color: C.dim } }, '›'),
       );
 
       const body = [];
       body.push(kv(lang.dim + ' / ' + lang.confidence,
-        (it.dimension || '—') + ' · ' + it.confidence + (it.advisory ? ' · ' + lang.advisory : '')));
+        dimLabel + ' · ' + (it.confidence || '—') + (it.advisory ? ' · ' + lang.advisory : '')));
       if (it.target) body.push(kv(lang.at, it.target));
       if (it.evidence && it.evidence.length) body.push(kv(lang.evidence, it.evidence.join('\n')));
       if (it.measured) body.push(kv(lang.measured, it.measured));
       body.push(kv(lang.fix, it.fixHint || lang.noFix));
-      body.push(h('div', { style: { fontSize: 10, color: C.dim, fontFamily: 'ui-monospace,Consolas,monospace', marginTop: 4 } }, it.fp));
+      body.push(h('div', {
+        style: { fontSize: FS.tiny, color: C.dim, fontFamily: 'ui-monospace,Consolas,monospace', marginTop: 4 },
+      }, it.fp));
 
       return h('details', {
         key: it.fp,
-        style: { border: '1px solid ' + C.line, borderRadius: 9, padding: '7px 9px', marginBottom: 7, background: C.card },
+        style: {
+          border: '1px solid ' + C.line, borderRadius: RADIUS.card,
+          padding: '7px 9px', marginBottom: 6, background: C.card,
+        },
       }, summary, h('div', { style: { marginTop: 7, paddingTop: 7, borderTop: '1px solid ' + C.line } }, body));
     }
 
@@ -190,125 +368,378 @@ window.__ModuleLoader__.load({
         fetch(API, { cache: 'no-store' })
           .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
           .then(function (d) { setState({ loading: false, data: d, error: null }); })
-          .catch(function (e) { setState({ loading: false, data: null, error: (e && e.message) || String(e) }); });
+          // 一次 60 秒缓存窗口里的瞬时失败，不该把「有内容的只读面板」整屏换成错误页：
+          // 留着旧数据，把错误挂成顶部一条。
+          .catch(function (e) {
+            setState(function (s) {
+              return { loading: false, data: s.data, error: (e && e.message) || String(e) };
+            });
+          });
       }, []);
       useEffect(function () { load(); }, [load]);
       return { state, load };
     }
 
+    // 内联样式表达不了 :focus-visible / [open] 过渡，注入一份作用域样式。
+    // 面板对两个 key 各注册一次（keepMounted），所以注入必须按 id 幂等。
+    function usePanelStyle() {
+      useEffect(function () {
+        if (typeof document === 'undefined') return;
+        const id = 'hk-panel-style';
+        if (document.getElementById(id)) return;
+        const el = document.createElement('style');
+        el.id = id;
+        el.textContent = [
+          'summary.hk-row::-webkit-details-marker{display:none}',
+          'summary.hk-row .hk-chev{transition:transform .12s ease;display:inline-block}',
+          'details[open]>summary.hk-row .hk-chev{transform:rotate(90deg)}',
+          'summary.hk-row:focus-visible,button:focus-visible,a:focus-visible{',
+          'outline:2px solid var(--dsw-alias-brand-primary,#2563eb);outline-offset:2px;border-radius:6px}',
+        ].join('');
+        document.head.appendChild(el);
+      }, []);
+    }
+
+    // 分数用分档色：>24px 属于 WCAG 大字（阈值 3:1），色相在这里是合法的，
+    // 而在 11px 正文里不合法（见文档 docs/REVIEW-PANEL-2026-11-16.md §D1）。
+    function bandColor(score) {
+      if (!isFinite(score)) return C.dim;
+      if (score >= 8.5) return C.ok;
+      if (score >= 7) return C.accent;
+      if (score >= 5) return C.warn;
+      return C.bad;
+    }
+
+    // 英雄卡：面板最重要的一件事得有压倒性的地位（原先是 17px，和「47.6 MB」同级）。
+    function heroCard(d, lang, sevRow, gap) {
+      const color = bandColor(typeof d.score === 'number' ? d.score : NaN);
+      return h('div', {
+        style: {
+          border: '1px solid ' + C.line, borderRadius: RADIUS.card,
+          background: C.card, padding: '12px 13px',
+        },
+      },
+        h('div', { style: { display: 'flex', alignItems: 'center', gap: 6 } },
+          h('span', { style: { fontSize: FS.small, color: C.dim } }, lang.score),
+          h('span', {
+            style: {
+              marginLeft: 'auto', fontSize: FS.small, fontWeight: 700, color,
+              background: color + '1f', border: '1px solid ' + color + '4d',
+              borderRadius: RADIUS.pill, padding: '1px 8px',
+            },
+          }, d.band || '—')),
+        h('div', { style: { display: 'flex', alignItems: 'baseline', gap: 4, marginTop: 2 } },
+          h('span', {
+            style: {
+              fontSize: FS.hero, fontWeight: 700, lineHeight: 1.1, color,
+              fontVariantNumeric: 'tabular-nums',
+            },
+          }, fmt(d.score, 2)),
+          h('span', { style: { fontSize: FS.body, color: C.dim } }, '/ 10'),
+          gap > 0.05
+            ? h('span', { style: { marginLeft: 4, fontSize: FS.tiny, color: C.dim } },
+              String(lang.cappedBefore).replace('{v}', fmt(d.raw, 2)))
+            : null),
+        sevRow,
+        h('div', {
+          style: {
+            display: 'flex', gap: 10, marginTop: 8, paddingTop: 6,
+            borderTop: '1px solid ' + C.line, fontSize: FS.tiny, color: C.dim,
+          },
+        },
+          h('span', null, lang.open + ' ' + fmt(d.count)),
+          h('span', null, lang.retired + ' ' + fmt(d.retired)),
+          h('span', { style: { marginLeft: 'auto' } }, fmt(d.trend.runs) + ' 次记账')),
+      );
+    }
+
     function Panel(props) {
       const lang = props.lang || I18N.zh;
       const { state, load } = useSummary();
+      usePanelStyle();
       const d = state.data;
+
+      const refreshBtn = h('button', {
+        type: 'button', disabled: state.loading, onClick: function () { load(); },
+        style: {
+          display: 'inline-flex', alignItems: 'center', height: 26, padding: '0 9px',
+          borderRadius: RADIUS.nested, border: '1px solid ' + C.line, background: C.card,
+          color: C.accent, fontSize: FS.small, fontFamily: 'inherit',
+          cursor: state.loading ? 'default' : 'pointer', opacity: state.loading ? 0.6 : 1,
+        },
+      }, state.loading ? lang.loading : lang.refresh);
 
       const header = h('div', { style: { display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 } },
         h(HealthkitIcon, { size: 18 }),
-        h('div', { style: { fontSize: 13, fontWeight: 700, color: C.fg } }, lang.title),
+        h('div', { style: { fontSize: FS.label, fontWeight: 700, color: C.fg } }, lang.title),
         h('div', { style: { flex: 1 } }),
-        h('a', {
-          href: '#', onClick: function (e) { e.preventDefault(); load(); },
-          style: { fontSize: 12, color: C.accent, textDecoration: 'none' },
-        }, lang.refresh),
+        refreshBtn,
       );
 
-      if (state.loading && !d) return h('div', { style: { padding: 14, color: C.dim, fontSize: 12 } }, header, lang.loading);
-      if (state.error) {
-        return h('div', { style: { padding: 14 } }, header,
-          h('div', { style: { fontSize: 12, color: C.bad, marginBottom: 8 } }, lang.error + state.error),
-          h('a', { href: '#', onClick: function (e) { e.preventDefault(); load(); }, style: { fontSize: 12, color: C.accent } }, lang.retry));
+      if (!d) {
+        return h('div', { style: { padding: '12px 14px' } }, header,
+          state.error
+            ? h('div', { style: { fontSize: FS.body, color: C.bad } }, lang.error + state.error)
+            : h('div', { style: { fontSize: FS.body, color: C.dim } }, lang.loading));
       }
-      if (!d) return h('div', { style: { padding: 14, color: C.dim, fontSize: 12 } }, header, lang.loading);
 
       const delta = typeof d.trend.delta === 'number' ? d.trend.delta : null;
-      const trend = d.trend.latest + (delta === null ? '（' + lang.first + '）' : (delta >= 0 ? ' (+' + delta + ')' : ' (' + delta + ')'));
+      const runs = typeof d.trend.runs === 'number' ? d.trend.runs : null;
+      // delta 是按「天」折叠算的：一天里跑 43 次时 delta 恒为 null，
+      // 印「首次」就是对着第 43 次体检说首次。按 runs 分档才对。
+      const trendSub = delta !== null
+        ? (delta >= 0 ? '+' : '') + delta + ' vs 上一日'
+        : (runs && runs > 1 ? lang.firstDay : lang.first);
+
+      const items = Array.isArray(d.items) ? d.items : [];
+      const isScored = function (x) { return x.severity !== 'INFO' && x.advisory !== true; };
+      const scoredItems = items.filter(isScored);
+      const infoItems = items.filter(function (x) { return !isScored(x); });
 
       const sevRow = h('div', { style: { display: 'flex', gap: 5, marginTop: 6, flexWrap: 'wrap' } },
-        badge('P0 ' + d.p0, SEV_COLOR.P0), badge('P1 ' + d.p1, SEV_COLOR.P1),
-        badge('P2 ' + d.p2, SEV_COLOR.P2), badge('INFO ' + d.info, SEV_COLOR.INFO));
+        badge('P0 ' + fmt(d.p0), SEV_COLOR.P0, !d.p0),
+        badge('P1 ' + fmt(d.p1), SEV_COLOR.P1, !d.p1),
+        badge('P2 ' + fmt(d.p2), SEV_COLOR.P2, !d.p2),
+        badge('INFO ' + fmt(d.info), SEV_COLOR.INFO, false),
+        h('span', { style: { alignSelf: 'center', marginLeft: 2, fontSize: FS.tiny, color: C.dim } },
+          String(lang.scored).replace('{a}', String(scoredItems.length)).replace('{b}', String(items.length))));
 
-      const grid = h('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 7 } },
-        metric(lang.score, String(d.score), d.band),
-        metric(lang.open + ' / ' + lang.retired, d.count + ' / ' + d.retired, null),
+      // 封顶差额：raw 一直在 payload 里，只是从没被画过。差 > 0.05 才算数。
+      const gap = (typeof d.raw === 'number' && typeof d.score === 'number' && isFinite(d.raw) && isFinite(d.score))
+        ? Math.round((d.raw - d.score) * 100) / 100
+        : 0;
+
+      const served = d.trim ? d.trim.served : null;
+      const maxBundles = d.trim ? d.trim.maxBundles : null;
+      const trimOver = (typeof served === 'number' && typeof maxBundles === 'number') ? served - maxBundles : 0;
+      const trimPct = (typeof served === 'number' && maxBundles) ? (served / maxBundles) * 100 : null;
+      const gain = (d.plan && typeof d.plan.potentialAll === 'number' && typeof d.score === 'number' && isFinite(d.score))
+        ? Math.round((d.plan.potentialAll - d.score) * 100) / 100
+        : null;
+
+      // 5 张卡进 2 列会留一个空洞；改成 2×2，补上「可涨」（修完能到几分）。
+      const grid = h('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 8 } },
         metric(lang.cleanable, d.clean ? mb(d.clean.bytes) : '—', d.clean ? d.clean.groups.length + ' 组' : null),
-        metric(lang.plugins, d.trim ? d.trim.served + ' / ' + d.trim.maxBundles : '—', d.trim ? d.trim.groups.length + ' 组冗余' : null),
-        metric(lang.trend, trend, d.trend.runs + ' 次 / ' + d.trend.daysTracked + ' 天 ' + (d.trend.sparkline || '')),
+        metric(lang.plugins,
+          served == null ? '—' : fmt(served) + ' / ' + fmt(maxBundles),
+          served == null ? null : (trimOver > 0 ? String(lang.over).replace('{a}', String(trimOver)) : '未超限'),
+          trimOver > 0 ? 'bad' : null,
+          trimPct),
+        metric(lang.trend, d.trend.latest == null ? '—' : fmt(d.trend.latest, 2), trendSub),
+        metric(lang.gainTitle, gain == null ? '—' : '+' + fmt(gain, 2),
+          d.plan && d.plan.potentialAll != null ? lang.all + ' → ' + fmt(d.plan.potentialAll, 2) : null),
       );
 
-      const issues = (d.items && d.items.length)
-        ? d.items.map(function (it) { return findingItem(it, lang); })
-        : h('div', { style: { fontSize: 12, color: C.dim } }, lang.none);
+      const trendCard = h('div', {
+        style: {
+          border: '1px solid ' + C.line, borderRadius: RADIUS.card,
+          background: C.card, padding: '8px 10px', marginTop: 8,
+        },
+      },
+        h('div', { style: { display: 'flex', alignItems: 'baseline', gap: 6, fontSize: FS.small, color: C.dim } },
+          h('span', { style: { fontWeight: 700, color: C.fg } }, lang.trendTitle),
+          h('span', { style: { marginLeft: 'auto', fontSize: FS.tiny } },
+            lang.axisNote.replace('{n}', fmt((d.trend.recent || []).length)))),
+        trendChart(d.trend.recent, lang));
 
-      const planNodes = [];
+      // 维度横条：默认折叠——健康态 7 条都在 9.5–10，条形几乎等长；
+      // 只有「有维度 < 9 分或存在 dimensionCaps」时才自动展开。
+      const dims = Array.isArray(d.dims) ? d.dims : [];
+      const dimsNeed = dims.filter(function (x) {
+        return (typeof x.score === 'number' && x.score < 9) || x.cappedBy;
+      });
+      const dimsBlock = dims.length
+        ? h('details', {
+          open: dimsNeed.length > 0,
+          style: {
+            border: '1px solid ' + C.line, borderRadius: RADIUS.card,
+            background: C.card, padding: '7px 9px', marginTop: 8,
+          },
+        },
+          h('summary', { style: { cursor: 'pointer', fontSize: FS.small, color: C.dim } },
+            dimsNeed.length
+              ? String(lang.lowest).replace('{a}',
+                (DIM_ZH[dimsNeed[0].key] || dimsNeed[0].key) + ' ' + fmt(dimsNeed[0].score, 2))
+              : String(lang.dimsHead) + '（' + dims.length + ' 维均 ≥ 9.0）'),
+          h('div', { style: { marginTop: 6 } },
+            dims.map(function (x) {
+              const pct = Math.max(2, Math.min(100, (Number(x.score) || 0) / 10 * 100));
+              const tone = x.score >= 9 ? C.ok : (x.score >= 7 ? C.accent : C.warn);
+              return h('div', {
+                key: x.key, title: x.label,
+                style: { display: 'flex', alignItems: 'center', gap: 6, marginTop: 4 },
+              },
+                h('span', { style: { flex: 'none', width: 52, fontSize: FS.small, color: C.fg } },
+                  DIM_ZH[x.key] || x.key),
+                h('span', { style: { flex: 'none', width: 26, fontSize: FS.tiny, color: C.dim } },
+                  fmt(x.weight) + '%'),
+                h('span', {
+                  style: { flex: 1, minWidth: 0, height: 8, borderRadius: 4, background: C.line, overflow: 'hidden' },
+                },
+                  h('span', {
+                    style: { display: 'block', width: pct + '%', height: '100%', borderRadius: 4, background: tone },
+                  }, null)),
+                h('span', {
+                  style: {
+                    flex: 'none', width: 30, textAlign: 'right', fontSize: FS.small,
+                    color: C.fg, fontVariantNumeric: 'tabular-nums',
+                  },
+                }, fmt(x.score, 2)));
+            })))
+        : null;
+
+      const issues = scoredItems.length
+        ? scoredItems.map(function (it) { return findingItem(it, lang); })
+        : h('div', { style: { fontSize: FS.body, color: C.dim } }, lang.none);
+
+      // 14/17 条是 INFO（不计分）。它们不该占着主视线，但一条也不能少。
+      const infoBlock = infoItems.length
+        ? h('details', {
+          style: {
+            border: '1px dashed ' + C.line, borderRadius: RADIUS.card,
+            padding: '7px 9px', marginTop: 8,
+          },
+        },
+          h('summary', { style: { cursor: 'pointer', fontSize: FS.small, color: C.dim } },
+            String(lang.infoGroup).replace('{n}', String(infoItems.length))),
+          h('div', { style: { marginTop: 6 } },
+            infoItems.map(function (it) { return findingItem(it, lang); })))
+        : null;
+
+      const planHead = [];
       if (d.plan && d.plan.stage1) {
-        planNodes.push(h('li', { key: 's1', style: { fontSize: 12, margin: '3px 0' } },
-          h('b', null, lang.step1 + '｜' + d.plan.stage1.count + ' 条 P0'),
-          '：' + d.plan.stage1.from + ' → ' + d.plan.stage1.to + '（' + (d.plan.stage1.delta > 0 ? '+' : '') + d.plan.stage1.delta + (d.plan.capped ? '，' + lang.capped : '') + '）',
-        ));
+        planHead.push(h('div', { key: 'p1', style: { fontSize: FS.body, color: C.fg, marginBottom: 4 } },
+          h('b', null, lang.step1 + '｜' + fmt(d.plan.stage1.count) + ' 条 P0'),
+          '：' + fmt(d.plan.stage1.from, 2) + ' → ' + fmt(d.plan.stage1.to, 2) +
+          '（' + (d.plan.stage1.delta > 0 ? '+' : '') + fmt(d.plan.stage1.delta, 2) +
+          (d.plan.capped ? '，' + lang.capped : '') + '）'));
       } else {
-        planNodes.push(h('li', { key: 's1', style: { fontSize: 12, margin: '3px 0' } }, h('b', null, lang.step1), '：P0 = 0，无需解封顶'));
+        planHead.push(h('div', { key: 'p0', style: { fontSize: FS.body, color: C.dim, marginBottom: 4 } },
+          h('b', { style: { color: C.fg } }, lang.step1), '：P0 = 0，无需解封顶'));
       }
-      if (d.plan && d.plan.rows && d.plan.rows.length) {
-        planNodes.push(h('li', { key: 's2', style: { fontSize: 12, margin: '3px 0' } },
-          h('b', null, lang.step2 + '｜' + d.plan.base + ' 为基准'),
-          h('div', null, d.plan.rows.map(function (r, i) {
-            return h('div', { key: i, style: { fontSize: 11.5, color: C.fg, marginTop: 2 } },
-              (r.delta > 0 ? '+' : '') + r.delta + ' · ' + r.ruleId + ' ' + String(r.title || '').slice(0, 46));
-          })),
-        ));
-      }
-      planNodes.push(h('li', { key: 'all', style: { fontSize: 12, margin: '3px 0' } },
-        h('b', null, lang.all + ' → ' + (d.plan ? d.plan.potentialAll : d.score) + ' / 10')));
+
+      const rows = (d.plan && d.plan.rows) || [];
+      const maxDelta = rows.length ? Math.max.apply(null, rows.map(function (r) { return Number(r.delta) || 0; })) : 0;
+      // 边际收益不叠加：Σ单条 ≠ potentialAll − base，标题必须写明。
+      const planBars = rows.length && maxDelta >= 0.05
+        ? h('div', null,
+            h('div', { style: { fontSize: FS.tiny, color: C.dim, marginBottom: 4 } },
+              (d.plan.base != null ? lang.basedOn.replace('{v}', fmt(d.plan.base, 2)) + ' · ' : '') + lang.fixes),
+            rows.map(function (r, i) {
+              const pct = Math.max(4, Math.min(100, (Number(r.delta) || 0) / maxDelta * 100));
+              return h('div', {
+                key: 'r' + i, title: String(r.title || ''),
+                style: { display: 'flex', alignItems: 'center', gap: 6, marginTop: 5 },
+              },
+                h('span', { style: { flex: 'none', fontSize: FS.small, color: C.fg, fontWeight: 700 } }, String(r.ruleId || '—')),
+                h('span', {
+                  style: {
+                    flex: 1, minWidth: 0, height: 8, borderRadius: 4,
+                    background: C.line, overflow: 'hidden',
+                  },
+                },
+                  h('span', {
+                    style: {
+                      display: 'block', width: pct + '%', height: '100%',
+                      borderRadius: 4, background: SEV_COLOR[r.severity] || C.accent,
+                    },
+                  }, null)),
+                h('span', {
+                  style: {
+                    flex: 'none', width: 38, textAlign: 'right', fontSize: FS.small,
+                    color: C.fg, fontVariantNumeric: 'tabular-nums',
+                  },
+                }, (Number(r.delta) > 0 ? '+' : '') + fmt(r.delta, 2)));
+            }))
+        : h('div', { style: { fontSize: FS.body, color: C.dim } }, lang.fixTiny);
+
+      const planBlock = h('div', null,
+        planHead,
+        planBars,
+        h('div', { style: { marginTop: 6, fontSize: FS.body, color: C.fg } },
+          h('b', null, lang.all + ' → ' + fmt(d.plan && d.plan.potentialAll, 2) + ' / 10')));
 
       const adviceNodes = [];
       if (d.trim && d.trim.suggestions) {
         d.trim.suggestions.forEach(function (s, i) {
-          adviceNodes.push(h('li', { key: 't' + i, style: { fontSize: 12, margin: '3px 0' } }, s));
+          adviceNodes.push(h('li', { key: 't' + i, style: { fontSize: FS.body, margin: '3px 0' } }, s));
         });
       }
       if (d.clean && d.clean.groups && d.clean.groups.length) {
-        adviceNodes.push(h('li', { key: 'c', style: { fontSize: 12, margin: '3px 0' } },
-          '可清理 ' + mb(d.clean.bytes) + '：' + d.clean.groups.map(function (g) { return g.label + ' ' + mb(g.bytes); }).join('、') + '（先预览，执行移入回收区 7 天可还原）'));
+        adviceNodes.push(h('li', { key: 'c', style: { fontSize: FS.body, margin: '3px 0' } },
+          '可清理 ' + mb(d.clean.bytes) + '：' +
+          d.clean.groups.map(function (g) { return g.label + ' ' + mb(g.bytes); }).join('、') +
+          '（先预览，执行移入回收区 7 天可还原）'));
       }
-      if (!adviceNodes.length) adviceNodes.push(h('li', { key: 'n', style: { fontSize: 12, color: C.dim } }, '—'));
+      if (!adviceNodes.length) adviceNodes.push(h('li', { key: 'n', style: { fontSize: FS.body, color: C.dim } }, '—'));
 
       const capsNode = d.capabilities
         ? h('div', null,
-            section(lang.caps + '（' + d.capabilities.present + ' 有 / ' + d.capabilities.redundant + ' 多 / ' +
-              d.capabilities.conflicting + ' 冲突 / ' + d.capabilities.degraded + ' 失效 / ' + d.capabilities.missing + ' 无）'),
-            h('ul', { style: { margin: 0, paddingLeft: 18 } },
+            section(lang.caps, fmt(d.capabilities.rows ? d.capabilities.rows.length : 0) + ' 个域有缺口'),
+            // 20 个域的状态是「构成占比」，用彩底药丸扫一眼就知道缺口在哪，
+            // 比原来那句长长的「8 有 / 4 多 / 1 冲突 / 2 失效 / 1 无」好读。
+            h('div', { style: { display: 'flex', gap: 5, flexWrap: 'wrap', marginBottom: 6 } },
+              CAPS_ROWS.map(function (row) {
+                return badge(row[1] + ' ' + fmt(d.capabilities[row[0]]), row[2], !d.capabilities[row[0]]);
+              })),
+            h('div', null,
               (d.capabilities.rows && d.capabilities.rows.length
                 ? d.capabilities.rows.map(function (x, i) {
-                    return h('li', { key: 'r' + i, style: { fontSize: 12, margin: '3px 0' } },
-                      h('b', null, x.label), ' · ' + x.status + '：' + x.detail);
-                  })
-                : [h('li', { key: 'none', style: { fontSize: 12, color: C.dim } }, lang.noRedundant)])),
-            h('div', { style: { fontSize: 10.5, color: C.dim, marginTop: 4 } }, lang.capsHint))
+                  return h('div', { key: 'r' + i, style: { fontSize: FS.body, margin: '3px 0' } },
+                    h('b', null, x.label), ' · ' + (STATUS_ZH[x.status] || x.status) + '：' + x.detail);
+                })
+                : h('div', { style: { fontSize: FS.body, color: C.dim } }, lang.noRedundant))),
+            h('div', { style: { fontSize: FS.tiny, color: C.dim, marginTop: 4 } }, lang.capsHint))
         : null;
 
       const retiredNode = d.retiredList && d.retiredList.length
-        ? h('details', { style: { border: '1px solid ' + C.line, borderRadius: 9, padding: '7px 9px', marginTop: 8 } },
-            h('summary', { style: { cursor: 'pointer', fontSize: 12, color: C.dim } }, lang.retired + ' ' + d.retiredList.length),
-            h('div', { style: { marginTop: 6 } }, d.retiredList.map(function (x, i) {
-              return h('div', { key: i, style: { fontSize: 11, color: C.dim, marginTop: 3 } }, x.ruleId + ' · ' + x.title);
-            })))
+        ? h('details', {
+          style: {
+            border: '1px solid ' + C.line, borderRadius: RADIUS.card,
+            padding: '7px 9px', marginTop: 8,
+          },
+        },
+          h('summary', { style: { cursor: 'pointer', fontSize: FS.body, color: C.dim } },
+            lang.retired + ' ' + fmt(d.retiredList.length)),
+          h('div', { style: { marginTop: 6 } }, d.retiredList.map(function (x, i) {
+            return h('div', { key: i, style: { fontSize: FS.small, color: C.dim, marginTop: 3 } },
+              x.ruleId + ' · ' + x.title);
+          })))
         : null;
 
-      return h('div', { style: { padding: '10px 12px', overflowY: 'auto', height: '100%', boxSizing: 'border-box', color: C.fg } },
+      const errorBar = state.error
+        ? h('div', {
+          style: {
+            fontSize: FS.small, color: C.bad, border: '1px solid ' + C.bad + '55',
+            background: C.bad + '14', borderRadius: RADIUS.nested, padding: '5px 8px', marginBottom: 8,
+          },
+        }, lang.error + state.error)
+        : null;
+
+      return h('div', {
+        style: {
+          padding: '12px 14px', overflowY: 'auto', height: '100%',
+          boxSizing: 'border-box', color: C.fg, lineHeight: 1.5,
+        },
+      },
         header,
-        h('div', { style: { fontSize: 11, color: C.dim, marginBottom: 8 } },
-          String(d.headline || '') + ' · ' + String(d.at || '').replace('T', ' ').slice(0, 19)),
+        errorBar,
+        heroCard(d, lang, sevRow, gap),
+        h('div', { style: { fontSize: FS.body, color: C.fg, marginTop: 8 } }, d.headline || ''),
+        h('div', { style: { fontSize: FS.tiny, color: C.dim, marginTop: 2 } }, '更新 ' + stamp({ at: d.at })),
         grid,
-        sevRow,
-        trendChart(d.trend.recent, lang),
-        section(lang.issues),
+        trendCard,
+        dimsBlock,
+        section(lang.issues, String(lang.scored).replace('{a}', String(scoredItems.length)).replace('{b}', String(items.length))),
         issues,
+        infoBlock,
         section(lang.plan),
-        h('ol', { style: { margin: 0, paddingLeft: 18 } }, planNodes),
+        planBlock,
         section(lang.advice),
-        h('ul', { style: { margin: 0, paddingLeft: 18 } }, adviceNodes),
+        h('ul', { style: { margin: 0, paddingLeft: 16 } }, adviceNodes),
         capsNode,
         retiredNode,
-        h('div', { style: { fontSize: 10.5, color: C.dim, marginTop: 12 } }, lang.readOnly + ' · 数据缓存 60 秒'),
+        h('div', { style: { fontSize: FS.tiny, color: C.dim, marginTop: 12 } }, lang.readOnly + ' · 数据缓存 60 秒'),
       );
     }
 
