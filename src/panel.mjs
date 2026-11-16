@@ -5,6 +5,9 @@
 //
 // 宿主 API：ctx.inject(['webServer'], ws => ws.register({ kind, path, handler }))
 // handler 是 Node 的 (req, res)。prefix 路由自己剥路径尾段。
+//
+// 2026-11-16 教训：前端最初用字符串拼 HTML + 手写转义，生成出来的 JS 里
+// \" 被吃成 "，整段脚本语法错误、页面空白。改成 DOM API 组装，不再拼标签。
 import { audit } from './engine.mjs';
 import { stats } from './history.mjs';
 import { analyze as trimAnalyze } from './trim.mjs';
@@ -37,6 +40,7 @@ export function collectSummary() {
   if (cache.data && now - cache.at < CACHE_MS) return cache.data;
 
   const r = audit({ scenario: 'general' });
+  const order = { P0: 0, P1: 1, P2: 2, INFO: 3 };
   const by = { P0: 0, P1: 0, P2: 0, INFO: 0 };
   r.findings.forEach((f) => { if (by[f.severity] !== undefined) by[f.severity] += 1; });
   const h = stats({ days: 30 });
@@ -48,12 +52,12 @@ export function collectSummary() {
   let trim = null;
   try {
     const t = trimAnalyze(r.facts);
-    trim = { served: t.served, maxBundles: t.maxBundles, groups: t.groups.length, suggestions: t.suggestions.slice(0, 3) };
+    trim = { served: t.served, maxBundles: t.maxBundles, groups: t.groups.length };
   } catch (e) { trim = null; }
 
   const top = r.findings
     .slice()
-    .sort((a, b) => ({ P0: 0, P1: 1, P2: 2, INFO: 3 }[a.severity] ?? 9) - ({ P0: 0, P1: 1, P2: 2, INFO: 3 }[b.severity] ?? 9))
+    .sort((a, b) => (order[a.severity] === undefined ? 9 : order[a.severity]) - (order[b.severity] === undefined ? 9 : order[b.severity]))
     .slice(0, 8)
     .map((f) => ({ severity: f.severity, ruleId: f.ruleId, title: f.title || '', fp: f.fp, fixHint: f.fixHint || '' }));
 
@@ -74,84 +78,87 @@ export function collectSummary() {
   return data;
 }
 
-function pageHtml() {
-  const css = [
-    ':root{--bg:#0f1419;--card:#171d24;--line:#242d38;--ink:#e6edf3;--dim:#8b98a5;--ok:#3fb950;--warn:#d29922;--bad:#f85149;--accent:#58a6ff}',
-    '*{box-sizing:border-box}',
-    'body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.55 -apple-system,"Segoe UI",system-ui,sans-serif;padding:20px}',
-    'header{display:flex;align-items:baseline;gap:12px;margin-bottom:18px}',
-    'h1{font-size:18px;margin:0;font-weight:600}',
-    'button{background:var(--card);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:6px 12px;cursor:pointer;font-size:13px}',
-    'button:hover{border-color:var(--accent)}',
-    '.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:14px}',
-    '.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px}',
-    '.k{color:var(--dim);font-size:12px;margin-bottom:6px}',
-    '.v{font-size:28px;font-weight:700;letter-spacing:-.5px}',
-    '.v small{font-size:13px;font-weight:400;color:var(--dim)}',
-    '.row{display:flex;gap:10px;align-items:center;margin-top:8px}',
-    '.sev{display:inline-block;min-width:52px;font-size:11px;font-weight:700;padding:1px 6px;border-radius:5px;text-align:center}',
-    '.s-P0{background:#3d1519;color:var(--bad)}.s-P1{background:#3a2d12;color:var(--warn)}',
-    '.s-P2{background:#12243a;color:var(--accent)}.s-INFO{background:#1b2229;color:var(--dim)}',
-    '.item{display:flex;gap:10px;padding:8px 0;border-bottom:1px solid var(--line);align-items:flex-start}',
-    '.item:last-child{border-bottom:0}',
-    '.fp{color:var(--dim);font-size:11px;font-family:ui-monospace,Consolas,monospace}',
-    '.bar{height:6px;background:#0b0f14;border-radius:4px;overflow:hidden;margin-top:8px}',
-    '.bar i{display:block;height:100%;background:linear-gradient(90deg,var(--accent),var(--ok))}',
-    '.dim{color:var(--dim);font-size:12px}',
-    'footer{margin-top:18px;color:var(--dim);font-size:12px}',
-  ].join('\n');
+const CSS = [
+  ':root{--bg:#0f1419;--card:#171d24;--line:#242d38;--ink:#e6edf3;--dim:#8b98a5;--ok:#3fb950;--warn:#d29922;--bad:#f85149;--accent:#58a6ff}',
+  '*{box-sizing:border-box}',
+  'body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.55 -apple-system,"Segoe UI",system-ui,sans-serif;padding:20px}',
+  'header{display:flex;align-items:baseline;gap:12px;margin-bottom:18px}',
+  'h1{font-size:18px;margin:0;font-weight:600}',
+  'button{background:var(--card);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:6px 12px;cursor:pointer;font-size:13px}',
+  'button:hover{border-color:var(--accent)}',
+  '.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:14px;align-items:start}',
+  '.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px}',
+  '.k{color:var(--dim);font-size:12px;margin-bottom:6px}',
+  '.v{font-size:28px;font-weight:700;letter-spacing:-.5px}',
+  '.v small{font-size:13px;font-weight:400;color:var(--dim)}',
+  '.row{display:flex;gap:10px;align-items:center;margin-top:8px;flex-wrap:wrap}',
+  '.sev{display:inline-block;min-width:52px;font-size:11px;font-weight:700;padding:1px 6px;border-radius:5px;text-align:center}',
+  '.s-P0{background:#3d1519;color:var(--bad)}',
+  '.s-P1{background:#3a2d12;color:var(--warn)}',
+  '.s-P2{background:#12243a;color:var(--accent)}',
+  '.s-INFO{background:#1b2229;color:var(--dim)}',
+  '.item{display:flex;gap:10px;padding:8px 0;border-bottom:1px solid var(--line);align-items:flex-start}',
+  '.item:last-child{border-bottom:0}',
+  '.fp{color:var(--dim);font-size:11px;font-family:ui-monospace,Consolas,monospace}',
+  '.dim{color:var(--dim);font-size:12px}',
+  'footer{margin-top:18px;color:var(--dim);font-size:12px}',
+].join('\n');
 
-  const js = [
-    'function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,function(c){return({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"})[c]})}',
-    'function sev(s){return "<span class=\"sev s-"+esc(s)+"\">"+esc(s)+"</span>"}',
-    'function mb(n){return n>=1073741824?(n/1073741824).toFixed(1)+" GB":(n/1048576).toFixed(1)+" MB"}',
-    'async function load(){',
-    '  const r = await fetch("' + PREFIX + '/api/summary",{cache:"no-store"});',
-    '  const d = await r.json();',
-    '  document.getElementById("score").textContent = d.score;',
-    '  document.getElementById("band").textContent = d.band;',
-    '  document.getElementById("sev").innerHTML = sev("P0")+" "+d.p0+" "+sev("P1")+" "+d.p1+" "+sev("P2")+" "+d.p2;',
-    '  document.getElementById("findings").textContent = d.findings;',
-    '  document.getElementById("retired").textContent = d.retired;',
-    '  document.getElementById("trend").textContent = d.trend.latest + (d.trend.delta>=0?" (+"+d.trend.delta+")":" ("+d.trend.delta+")");',
-    '  document.getElementById("runs").textContent = d.trend.runs + " 次 / " + d.trend.daysTracked + " 天";',
-    '  document.getElementById("spark").textContent = d.trend.sparkline || "—";',
-    '  document.getElementById("clean").textContent = d.clean ? mb(d.clean.bytes) : "未知";',
-    '  document.getElementById("cleanSub").textContent = d.clean ? d.clean.candidates + " 组可清理（先预览再生效）" : "";',
-    '  if (d.trim) { document.getElementById("trim").textContent = d.trim.served + " / " + d.trim.maxBundles;',
-    '    document.getElementById("trimSub").textContent = d.trim.groups + " 组能力冗余"; }',
-    '  document.getElementById("top").innerHTML = d.top.map(function(x){',
-    '    return "<div class=\"item\">"+sev(x.severity)+"<div><b>"+esc(x.ruleId)+"</b> "+esc(x.title)+',
-    '      (x.fixHint?"<div class=\"dim\">"+esc(x.fixHint)+"</div>":"")+"<div class=\"fp\">"+esc(x.fp)+"</div></div></div>";',
-    '  }).join("") || "<div class=\"dim\">没有未解决的问题</div>";',
-    '  document.getElementById("at").textContent = d.at.replace("T"," ").slice(0,19);',
-    '}',
-    'document.getElementById("refresh").onclick = function(){ load().catch(function(e){ document.getElementById("at").textContent = "刷新失败：" + e.message }); };',
-    'load().catch(function(e){ document.getElementById("at").textContent = "加载失败：" + e.message });',
-  ].join('\n');
+const JS = [
+  'function el(tag, cls, txt){var e=document.createElement(tag);if(cls)e.className=cls;if(txt!=null)e.textContent=String(txt);return e}',
+  'function sev(s){return el("span","sev s-"+s,s)}',
+  'function mb(n){return n>=1073741824?(n/1073741824).toFixed(1)+" GB":(n/1048576).toFixed(1)+" MB"}',
+  'function setText(id,t){document.getElementById(id).textContent=t}',
+  'function renderSev(d){var box=document.getElementById("sev");box.textContent="";',
+  '  [["P0",d.p0],["P1",d.p1],["P2",d.p2],["INFO",d.info]].forEach(function(p){box.appendChild(sev(p[0]));box.appendChild(el("b",null," "+p[1]));})}',
+  'function renderTop(items){var box=document.getElementById("top");box.textContent="";',
+  '  if(!items.length){box.appendChild(el("div","dim","没有未解决的问题"));return}',
+  '  items.forEach(function(x){var row=el("div","item");row.appendChild(sev(x.severity));',
+  '    var w=el("div");w.appendChild(el("b",null,x.ruleId));w.appendChild(el("span",null," "+x.title));',
+  '    if(x.fixHint)w.appendChild(el("div","dim",x.fixHint));',
+  '    w.appendChild(el("div","fp",x.fp));row.appendChild(w);box.appendChild(row)})}',
+  'async function load(){',
+  '  var d=window.__SUMMARY__;',
+  '  if(!d){var r=await fetch("' + PREFIX + '/api/summary",{cache:"no-store"});d=await r.json()}',
+  '  setText("score",d.score);setText("band",d.band);renderSev(d);',
+  '  setText("findings",d.findings);setText("retired",d.retired);',
+  '  var dl=(typeof d.trend.delta==="number")?d.trend.delta:null;',
+  '  setText("trend",d.trend.latest+(dl===null?"（首次）":(dl>=0?" (+"+dl+")":" ("+dl+")")));',
+  '  setText("runs",d.trend.runs+" 次 / "+d.trend.daysTracked+" 天");',
+  '  setText("spark",d.trend.sparkline||"—");',
+  '  setText("clean",d.clean?mb(d.clean.bytes):"未知");',
+  '  setText("cleanSub",d.clean?d.clean.candidates+" 组可清理（先预览再生效）":"");',
+  '  if(d.trim){setText("trim",d.trim.served+" / "+d.trim.maxBundles);setText("trimSub",d.trim.groups+" 组能力冗余")}',
+  '  renderTop(d.top);',
+  '  setText("at","更新 "+String(d.at).replace("T"," ").slice(0,19));',
+  '}',
+  'document.getElementById("refresh").onclick=function(){load().catch(function(e){setText("at","刷新失败："+e.message)})};',
+  'load().catch(function(e){setText("at","加载失败："+e.message)});',
+].join('\n');
 
+export function pageHtml() {
   return [
     '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">',
     '<meta name="viewport" content="width=device-width,initial-scale=1">',
-    '<title>DSH 体检</title><style>' + css + '</style></head><body>',
+    '<title>DSH 体检</title><style>' + CSS + '</style></head><body>',
     '<header><h1>DSH 体检</h1><span class="dim">只读 · 不写配置 · 不联网</span>',
     '<span style="flex:1"></span><button id="refresh">刷新</button></header>',
     '<div class="grid">',
     '<div class="card"><div class="k">总分（10 分制）</div><div class="v" id="score">—</div><div class="row" id="sev"></div></div>',
     '<div class="card"><div class="k">分档</div><div class="v" id="band">—</div><div class="dim" id="at">加载中…</div></div>',
-    '<div class="card"><div class="k">未解决问题 / 已退役</div><div class="v"><span id="findings">—</span> <small>/ <span id="retired">—</span></small></div></div>',
+    '<div class="card"><div class="k">未解决 / 已退役</div><div class="v"><span id="findings">—</span> <small>/ <span id="retired">—</span></small></div></div>',
     '<div class="card"><div class="k">最新分 / 记账</div><div class="v" id="trend">—</div><div class="dim" id="runs"></div><div class="dim" id="spark" style="font-family:ui-monospace,monospace;font-size:16px"></div></div>',
     '<div class="card"><div class="k">可清理空间</div><div class="v" id="clean">—</div><div class="dim" id="cleanSub"></div></div>',
-    '<div class="card"><div class="k">服务插件 / bundles 上限</div><div class="v" id="trim">—</div><div class="dim" id="trimSub"></div></div>',
+    '<div class="card"><div class="k">服务插件 / 上限</div><div class="v" id="trim">—</div><div class="dim" id="trimSub"></div></div>',
     '</div>',
     '<div class="card" style="margin-top:14px"><div class="k">先看这些（按严重度）</div><div id="top"></div></div>',
     '<footer>数据来自本机 ~/.dsh；面板只读，清理与修复请走 audit_clean / CLI。每分钟缓存一次。</footer>',
-    '<script>' + js + '</script>',
+    '<script>' + JS + '</script>',
     '</body></html>',
   ].join('\n');
 }
 
-export function registerPanel(webServer, opts) {
+export function registerPanel(webServer) {
   const report = { ok: false, routes: 0, attempts: [] };
   if (!webServer || typeof webServer.register !== 'function') {
     report.reason = 'webServer-unavailable';
