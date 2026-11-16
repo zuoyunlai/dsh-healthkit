@@ -1,18 +1,23 @@
 # CHANGELOG
 
-## 未发布 — 产品审计反哺批（P0–P4 落地 · 台账 docs/FIXLOG-PRODUCT-2026-11-17.md）
+## 0.12.0 — 2026-11-17
+
+本版三批：**面板/趋势修复** · **架构审计反哺**（P0×2 / P1×7 / P2×5）· **产品审计反哺**（P0–P4）。
+工具面 15 → **16**（新增 `audit_digest`、`audit_feedback`），测试 28 组。
+
+### 产品审计反哺批
 
 > 产品审计的核心判断：它至今只证明了「作者能用它管住自己 23 小时发 28 版的混乱」；
 > 要变成「别人的体检工具」，缺的不是功能/分发/质量，而是首屏、来源、验回三件事。
 
-### P0 首屏结论化（健康机器不再「跑完啥也没说」）
+#### P0 首屏结论化（健康机器不再「跑完啥也没说」）
 
 - 首屏从「14 行 INFO + 3 条 P2」改成：**1 句结论 → 最值得动的 ≤3 条 → 其余一句话收走**。
 - 新 `src/digest.mjs` 是这条口径的单一真源（`headlineOf` / `pickTopActions` / `renderFirstScreen`），
   `audit_run` 的 summary、CLI 默认输出、面板 headline 全读它。
 - **不删任何 INFO**：它们是 `audit_diff` 的观测基线，只是换了表达。全量清单走 `--verbose` / `audit_findings`。
 
-### P1 账本记触发来源
+#### P1 账本记触发来源
 
 - `history` 记录新增 `source`（human / agent / automation / ci，可用 `DSH_HEALTHKIT_SOURCE` 覆盖）；
   `stats()` 汇总 `sources` / `humanRuns`；面板 payload 带出。
@@ -20,27 +25,27 @@
   动机：实测 50 条记账全在一天、78% 与前次同值，而「谁在跑」从来没记——一次审计的 4 次只读探测
   就能把账本凭空造出第二天。
 
-### P2 差异驱动周报 + 让验回有活干
+#### P2 差异驱动周报 + 让验回有活干
 
 - 新工具 **`audit_digest`**（+ CLI `--digest`）：与上次快照比变化，**必带「上次说该修的现在怎样」**，
   没有变化只说一句「没有变化」而不复述。
 - `writePending` 判据从「只收带修法的 P0/P1」改为「P0/P1 全收 + 最多 3 条带修法的 P2」——
   原来健康机器（P0/P1 归零）待验清单恒空，**`audit_verify` 在健康机器上永远没有对象可验**。
 
-### P3 R17 与 clean 讲同一件事
+#### P3 R17 与 clean 讲同一件事
 
 - R17 补 `fixHint`：先跑 `audit_clean preview`，并说明不在可清理分组里的是有意不清理的受保护面。
 - 面板 payload 新增 `clean.notCleanable`（≥50MB 且未被任何分组覆盖的顶层目录，带 `protected` 标记），
   侧栏「可清理」卡副行变成「3 组 · 另 5 个大目录不在清理档」。
 - 覆盖判定按路径前缀（`cache/attachments` 可清理 ≠ `~/.dsh/attachments` 可清理）。
 
-### P4 README 首屏
+#### P4 README 首屏
 
 - 首屏 = 一句定位 + 一段真实输出 + 「它不做什么」+ 与 doctor / 插件管理器的分工；工具表下沉。
 - `docs/COMPLEMENTARY.md` 进 npm `files`（此前这份「和 doctor 有什么不同」的答案不在包里）。
 - 工具表与 `--init` 文案同步到 15 个工具（`tools-shape` 有断言盯文案与实现一致）。
 
-### 补齐：周报定时投递 + 首次价值信号
+#### 补齐：周报定时投递 + 首次价值信号
 
 - 现有「每周 DSH 体检」自动化改成**差异驱动**（调 `audit_digest`，无变化只回一句），
   权限从 workspace-write 降到 **read-only**，并写死禁令（不许 clean/改配置/装卸插件/写文件）。
@@ -49,7 +54,7 @@
   `firstValueRate = 不知道 / 已回答`，低于 30% 时 `audit_digest` 直接点出来。
   这是「值不值得装」的唯一真指标，此前没有任何机制在收。
 
-### 补齐：产品指标上屏
+#### 补齐：产品指标上屏
 
 - 新 `src/metrics.mjs`：第二次运行（只数 human/automation，跨度 ≥7 天才给结论）、
   结论采纳率（`fixed/(fixed+stillThere)`，**静音不算采纳**）、误报率（`retired/(findings+retired)`）。
@@ -57,17 +62,17 @@
 - 口径是「算不出来就说算不出来」：本机当前 第二次运行/采纳率 都是「算不出来」（老账本无 source、无验回记录），
   误报率 15%（3/20）。这两个数会随真实使用自己变真。
 
-### 测试
+#### 测试
 
 - 新增 `test/digest.mjs`（16 项断言）、`test/feedback.mjs`（13 项断言）、`test/metrics.mjs`（16 项断言）；`test/verify.mjs` 按新判据更新（P2 进清单、最多 3 条、
-  只有 P2 时也有目标）；`tools-shape` / `apply-inject` / `init` 文案同步到 15 个工具。
+  只有 P2 时也有目标）；`tools-shape` / `apply-inject` / `init` 文案同步到 16 个工具。
 
-## 未发布 — 架构审计反哺批（P0×2 · P1×7 · P2×5 全部落地）
+### 架构审计反哺批
 
 > 依据 `docs/FIXLOG-2026-11-17.md`（逐条修前/修后实测台账）。
 > 架构评分 6.4/10「需治理」；本轮不改评分口径、不改版本号、未发版。
 
-### 修：两条会动数据/骗人的静默路径（P0）
+#### 修：两条会动数据/骗人的静默路径（P0）
 
 - **A1 清理护栏对「终段同名目录」失效**：正则写成 `\$`（转义的字面美元号，不是结尾锚点），
   实测 `C:/_backup/node_modules` 直接通过——恰恰是它唯一要保护的情形；且护栏零测试。
@@ -77,14 +82,14 @@
   整条从体检里消失、零发现、报告照旧高分。改为记 `facts.profileErrors[]` + 新规则 **R24**
   （reliability/P0/MEASURED），P0 封顶随之生效。新增 `test/profile-errors.mjs`（13 断言）。
 
-### 改：性能与启动噪声（P1）
+#### 改：性能与启动噪声（P1）
 
 - **事实缓存**（新 `src/cache.mjs`）：三次连续 audit **1016/854/933ms → 1051/18/19ms**。
   只缓存 facts，评分/退役/快照仍现算；指纹含 profile 目录与 package.json、cordis*.yml 的 mtime，
   改配置自动失效；`opts.fresh` 与 `DSH_HEALTHKIT_NO_CACHE=1` 两条旁路。面板缓存 60s→55s（落在引擎缓存热区）。
 - **启动惰性验回**：`pending-verify.json` 无 targets 时不再跑全量体检（本机实测 targets 为空却每次开机扫盘）。
 
-### 改：评分与分层契约（P1）
+#### 改：评分与分层契约（P1）
 
 - **rubric 自检**（`validateRubric`）：caps.when 白名单、维度 key 唯一、bands 严格降序、
   dimensionCaps 单调、penalty 三档齐。修前实测「caps 少两个空格 ⇒ 同一组 findings 从 5.0 变 9.6」；
@@ -94,7 +99,7 @@
 - **面板 payload 契约**：加 `schema: dsh-healthkit/panel/v1` + 必需键 assert + `bands` 下发；
   client 不再硬编码 8.5/7/5 阈值（`test/panel-contract.mjs`）。
 
-### 修：趋势图在「极差很小」时整个消失（2026-11-17 用户反馈）
+#### 修：趋势图在「极差很小」时整个消失（2026-11-17 用户反馈）
 
 上一版按「极差 < 1 分就先不画折线」处理：本机分数 9.6–9.81 恰好命中，面板只剩一句
 「近 20 次稳定在…」，读者只会当成功能坏了。更糟的是**服务端版本一直画**，两端口径分叉
@@ -104,7 +109,7 @@
 - `test/panel-contract.mjs` 加两条守卫：不许按 `spread >= N ?` 省略折线、必须始终渲染 polyline；
 - 用一次性探针在真实数据（极差 0.21）下复核：渲染树里 1 条 polyline + 4 段分档带。
 
-### 改：测试与门禁（P1/P2）
+#### 改：测试与门禁（P1/P2）
 
 - 删掉两条**恒真断言**（`r.findings.length >= 0`、`f.measured.engineAsset === true` 该字段不存在），
   换成 advisory 不许进评分、R17 verdict 与 `facts.engineAssets` 对账。
