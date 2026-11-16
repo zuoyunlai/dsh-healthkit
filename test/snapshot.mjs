@@ -22,13 +22,16 @@ function mkResult(fps, score, retired) {
 }
 
 // 第一次：写基线
-const p1 = writeRun(mkResult(['R1#a', 'R11', 'R13'], 8.0), { home: home, scenario: 'general', version: 't' });
+// 显式给两次写入不同的 at：CI（快机器）上两次 fs 写入可能落在同一毫秒，
+// 那样 listRuns 的顺序与 loadRun(stamp) 都会指向同一份，diff 变成空差（v0.12.0 的 ci 就是这么挂的）。
+const T0 = 1763300000000;
+const p1 = writeRun(mkResult(['R1#a', 'R11', 'R13'], 8.0), { home: home, scenario: 'general', version: 't', at: T0 });
 assert.ok(p1 && fs.existsSync(p1), '快照应落盘');
 assert.equal(listRuns(home).length, 1);
 
 // 第二次：R1#a 修好了（消失），R14 新增，R11 被退役记档。
 // 注意被退役的问题**不在 findings 里**——engine.audit() 已经把它挪进 retired 了。
-writeRun(mkResult(['R13', 'R14'], 8.5, ['R11']), { home: home, scenario: 'general', version: 't' });
+writeRun(mkResult(['R13', 'R14'], 8.5, ['R11']), { home: home, scenario: 'general', version: 't', at: T0 + 1000 });
 assert.equal(listRuns(home).length, 2);
 
 const runs = listRuns(home);
