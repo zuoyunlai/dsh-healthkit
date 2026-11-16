@@ -1,5 +1,21 @@
 # CHANGELOG
 
+## 0.8.4 — 2026-11-16
+
+### 修：reportpath 夹具全面平台化（CI 第三次红）
+
+v0.8.3 的 CI 又红在 `reportpath`：这次是 `reportDir` 那条——
+夹具里 `home='C:/Users/u/.dsh'`、`ws='E:/work'` 在 POSIX 上都不是绝对路径，
+`path.resolve(ws, cfg)` 于是把它们当相对路径拼到 cwd 后面。
+
+- 夹具里 **home / ws / out 全部改用平台自己的方式构造绝对路径**
+  （`path.resolve(path.sep + ...)`），并补断言「落点必须是绝对路径」。
+- **找到可靠的验证手段**：本机 WSL 里有 node v26，可以直接跑真 POSIX。
+  新增 `run-tests-posix.sh`：在 WSL 里用空 HOME 跑全部测试 = 模拟 CI。
+  —— 之前两次发版失败，根因都是「Windows 上绿、Linux 上红」，而本机没有 POSIX 环境可验。
+  现在有：改完先在 WSL 跑一遍，再打 tag。
+- 三次 CI 失败的共同教训已写进本文档：夹具里不许写死盘符路径。
+
 ## 0.8.3 — 2026-11-16
 
 ### 修：测试改为平台无关 + 环境无关（CI 第二次发版仍红，根因在此）
