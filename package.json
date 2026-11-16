@@ -3,6 +3,11 @@
   "version": "0.4.1",
   "private": true,
   "type": "module",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/zuoyunlai/dsh-auditkit.git"
+  },
   "description": "DSH 体检：只读体检评分、可还原清理、分数趋势（host-agnostic engine + CLI；结论可核、清理可撤销）",
   "main": "./index.js",
   "exports": {
