@@ -40,4 +40,9 @@ ok('client 不许硬编码分档阈值 score >= 7', !/score\s*>=\s*7\b/.test(cli
 ok('client 不许硬编码维度色阈值 score >= 9', !/score\s*>=\s*9\b/.test(client));
 ok('client 应从 payload 读 bands', /bandSegments\(\s*bands\s*\)|bandSegments\(\s*d\.bands\s*\)/.test(client));
 
+// 2026-11-17 回归：client 曾按「极差 < 1 分」把折线整个关掉，而服务端版本一直画，
+// 两端口径分叉 → 用户看到「趋势图没了」。图和说明是两件事，图不许条件省略。
+ok('client 不许按极差省略折线', !/spread\s*>=\s*[\d.]+\s*\?/.test(client));
+ok('client 必须始终渲染 polyline', /h\('polyline'/.test(client));
+
 console.log('panel-contract: 通过（' + n + ' 项断言 · schema/必需键/bands 降序/阈值单一真源）');

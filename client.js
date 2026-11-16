@@ -262,14 +262,15 @@ window.__ModuleLoader__.load({
         stroke: 'currentColor', strokeOpacity: 0.45, strokeWidth: 1,
         strokeDasharray: '1.5 1.5', vectorEffect: 'non-scaling-stroke',
       });
-      // 极差 < 1 分时不出折线：亚像素抖动会伪装成「有起伏」，此时一句话更诚实。
-      const shape = spread >= 1
-        ? h('polyline', {
-          points: list.map(function (p, i) { return x(i).toFixed(2) + ',' + y(p.total).toFixed(2); }).join(' '),
-          fill: 'none', stroke: C.accent, strokeWidth: 1.6,
-          strokeLinejoin: 'round', strokeLinecap: 'round', vectorEffect: 'non-scaling-stroke',
-        })
-        : null;
+      // 折线永远画（2026-11-17 用户反馈「趋势怎么没折线了」）。
+      // 上一版按「极差 < 1 分就先不画」处理，本机 9.6–9.81 恰好命中 → 图直接消失，
+      // 读者只会认为功能坏了。分档带已经承担「我在哪一档」的语义，贴顶的平线不再有
+      // 误导性；极差小时另加一行「稳定在 a–b」的补充说明，而不是拿说明替掉图。
+      const shape = h('polyline', {
+        points: list.map(function (p, i) { return x(i).toFixed(2) + ',' + y(p.total).toFixed(2); }).join(' '),
+        fill: 'none', stroke: C.accent, strokeWidth: 1.6,
+        strokeLinejoin: 'round', strokeLinecap: 'round', vectorEffect: 'non-scaling-stroke',
+      });
 
       const legend = h('div', {
         style: { display: 'flex', gap: 8, marginTop: 4, flexWrap: 'wrap', fontSize: 10, color: C.dim },

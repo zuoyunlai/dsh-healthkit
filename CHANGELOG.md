@@ -32,6 +32,16 @@
 - **面板 payload 契约**：加 `schema: dsh-healthkit/panel/v1` + 必需键 assert + `bands` 下发；
   client 不再硬编码 8.5/7/5 阈值（`test/panel-contract.mjs`）。
 
+### 修：趋势图在「极差很小」时整个消失（2026-11-17 用户反馈）
+
+上一版按「极差 < 1 分就先不画折线」处理：本机分数 9.6–9.81 恰好命中，面板只剩一句
+「近 20 次稳定在…」，读者只会当成功能坏了。更糟的是**服务端版本一直画**，两端口径分叉
+（正是架构审计里 client/panel 双实现漂移的老问题）。
+
+- client 改为**折线永远画**；极差小时另加一行「稳定在 a–b」作补充说明，不再拿说明替掉图；
+- `test/panel-contract.mjs` 加两条守卫：不许按 `spread >= N ?` 省略折线、必须始终渲染 polyline；
+- 用一次性探针在真实数据（极差 0.21）下复核：渲染树里 1 条 polyline + 4 段分档带。
+
 ### 改：测试与门禁（P1/P2）
 
 - 删掉两条**恒真断言**（`r.findings.length >= 0`、`f.measured.engineAsset === true` 该字段不存在），
