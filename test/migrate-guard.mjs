@@ -58,7 +58,9 @@ const mkHome = () => fs.mkdtempSync(path.join(os.tmpdir(), 'healthkit-mig-'));
   for (const f of files) {
     const p = f === 'index.js' ? path.join(here, '..', f) : path.join(here, '..', 'src', f);
     const src = fs.readFileSync(p, 'utf8');
-    assert.ok(!src.includes("'dsh-auditkit'"), f + ' 仍手写旧数据目录名，请用 paths.mjs 的 dataDir()');
+    // 只认「旧目录名这个字符串」出现在业务代码里，不管带不带引号——
+    // 0.4.5 就是因为只拦了带引号的写法，漏掉了工具描述里裸写的那一处。
+    assert.ok(!src.includes('dsh-auditkit'), f + ' 仍写死旧数据目录名，请用 paths.mjs 的 dataDir() / LEGACY_DIR_NAME');
   }
 }
 

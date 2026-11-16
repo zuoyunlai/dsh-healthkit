@@ -75,7 +75,7 @@ export function renderReport(facts, findings, sc, opts) {
   L('- 引擎资产：' + (facts.engineAssets.length ? facts.engineAssets.map(function (a) { return a.path.replace(facts.home, '~/.dsh'); }).join('，') : '未识别'));
   L('');
   L('---');
-  L('由 dsh-healthkit 生成。规则不可靠时会输出 UNKNOWN 而不是猜测；误报请用 audit_retire 记档（P2 交付）。');
+  L('由 dsh-healthkit 生成。规则不可靠时会输出 UNKNOWN 而不是猜测；误报记档：dsh-healthkit --retire <指纹> --reason "原因"，用 --list-retired 查看已记档。');
   return lines.join('\n') + '\n';
 }
 

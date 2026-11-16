@@ -170,7 +170,7 @@ function buildTools(deps) {
   },
   {
     name: 'audit_report',
-    description: '跑一次体检，把完整 Markdown 报告写成文件：缺省写本会话工作区的 AUDIT-<日期>.md；给了 out 则按 out（相对路径以会话工作区为基准）；取不到工作区时退到 $DSH_HOME/dsh-auditkit/reports/。返回路径、落点来源与摘要',
+    description: '跑一次体检，把完整 Markdown 报告写成文件：缺省写本会话工作区的 AUDIT-<日期>.md；给了 out 则按 out（相对路径以会话工作区为基准）；取不到工作区时退到 $DSH_HOME/dsh-healthkit/reports/。返回路径、落点来源与摘要',
     parameters: {
       type: 'object',
       properties: {
@@ -307,7 +307,7 @@ export function apply(ctx, config) {
   const failures = [];
   const state = { toolsReady: false, surfaces: [] };
 
-  // 数据目录改名 dsh-healthkit（2026-11-16）：首次启动把旧的 dsh-auditkit 整目录 rename 过来；
+  // 数据目录改名 dsh-healthkit（2026-11-16）：首次启动把旧目录（见 src/paths.mjs 的 LEGACY_DIR_NAME）整目录 rename 过来；
   // 失败就回落旧目录继续用，绝不半搬。结果写进 status 供事后核对。
   let dataMigration = null;
   try { dataMigration = migrateLegacyDataDir(); } catch (e) { dataMigration = { status: 'failed', error: msg(e) }; }

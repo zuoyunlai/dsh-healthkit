@@ -47,6 +47,34 @@ function buildIndex(h) {
   var idx = bundleIndexFrom(dumps); idx.requested = bundles.length + 1; idx.ok = ok; return idx;
 }
 
+var USAGE = [
+  'dsh-healthkit —— DSH 体检（只读评分 / 可还原清理 / 分数趋势）',
+  '',
+  '用法：',
+  '  dsh-healthkit                   跑一次体检，写 AUDIT-<日期>.md 并记账',
+  '  dsh-healthkit --scenario <名>    general | code | design | writing',
+  '  dsh-healthkit --out <路径>       指定报告落点',
+  '  dsh-healthkit --json            只输出 JSON 摘要',
+  '  dsh-healthkit --why             只看「先修哪几条」',
+  '  dsh-healthkit --links           看 link:/file: 依赖指向何处',
+  '  dsh-healthkit --trend [--days N]  分数趋势',
+  '  dsh-healthkit --probe-all       重新探针 bundle 索引（约 60s）',
+  '  dsh-healthkit --dump-facts <路径> 导出采集到的原始事实',
+  '',
+  '误报记档：',
+  '  dsh-healthkit --retire <指纹或规则号> --reason "原因"',
+  '  dsh-healthkit --list-retired',
+  '',
+  '清理（默认只预览，永不直删）：',
+  '  dsh-healthkit --clean-preview',
+  '  dsh-healthkit --clean-apply --ids a,b [--confirm] [--dry-run]',
+  '  dsh-healthkit --clean-list',
+  '  dsh-healthkit --clean-restore <批次号>',
+  '  dsh-healthkit --clean-purge [--older-than N] [--dry-run]',
+].join('\n');
+
+if (has('help') || has('h')) { console.log(USAGE); process.exit(0); }
+
 if (has('links')) {
   var snap = audit({ scenario: 'general' });
   var rows = [];
