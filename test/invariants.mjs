@@ -1,4 +1,14 @@
-import { audit, loadRetirements } from '../src/engine.mjs';
+// 不变量测试：跑在一个**临时 HOME** 上（造一个最小假 DSH 安装）。
+//
+// 为什么不用真机：CI（ubuntu runner）上没有 ~/.dsh，用真机必然红；
+// 而不变量本身要验的是「规则行为」，与具体机器无关。
+import { makeTempHome } from './testenv.mjs';
+
+const tmpHome = makeTempHome('healthkit-inv-');
+process.env.DSH_HOME = tmpHome;
+
+// 动态 import：静态 import 会在 DSH_HOME 设上之前就完成模块求值。
+var { audit, loadRetirements } = await import('../src/engine.mjs');
 
 var fails = [];
 function ok(name, cond, detail) {
@@ -28,3 +38,4 @@ ok('advisory-separated', r.findings.length >= 0 && adv.length >= 0, 'advisory=' 
 console.log('---');
 console.log('failed=' + fails.length + ' findings=' + r.findings.length + ' retired=' + r.retired.length);
 if (fails.length) process.exit(1);
+

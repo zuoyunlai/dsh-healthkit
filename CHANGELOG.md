@@ -1,6 +1,24 @@
 # CHANGELOG
 
-## 0.8.2 — 2026-11-16
+## 0.8.3 — 2026-11-16
+
+### 修：测试改为平台无关 + 环境无关（CI 第二次发版仍红，根因在此）
+
+v0.8.2 的 CI 又红，这次是 `reportpath` 那条「out 绝对路径照用」：
+夹具里写死 `'D:/reports/x.md'`，而 POSIX 上 `path.isAbsolute('D:/...')` 为 **false**——
+路径语义不同，不是代码有错。
+
+- **绝对路径断言**改用平台自己的方式构造（`path.resolve(path.sep + 'reports' + ...)`），
+  任何平台上都是真绝对路径。
+- **依赖真机环境的测试改为自建临时 HOME**（新增 `test/testenv.mjs`）：
+  `invariants` / `panel` / `tools-shape` 三个测试在 CI（ubuntu runner，没有 `~/.dsh`）上必然红，
+  现在各自造一个最小假 DSH 安装（一个 profile + 一个未挂载的第三方包）。
+  **必须用动态 import**：ESM 静态 import 会在模块求值时先执行，那时 `DSH_HOME` 还没设上。
+- `panel` 测试补记两笔账：折线需要至少两个数据点，临时 HOME 里账本是空的。
+- 新增 `run-tests-empty-home.sh`（本地）：在**空 HOME** 下跑全部测试 = 模拟 CI，
+  不必等 CI 才发现平台/环境差异。
+
+### 0.8.2 — 2026-11-16
 
 ### 修：R22 判定改成平台无关（CI 首次发版即红，根因在此）
 

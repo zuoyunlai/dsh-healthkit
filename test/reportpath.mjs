@@ -6,6 +6,10 @@ import { resolveReportPath, reportFileName, localDate } from '../src/reportpath.
 const now = new Date(2026, 10, 16, 12, 0, 0);
 const home = 'C:/Users/u/.dsh';
 const ws = 'E:/work';
+// 绝对路径必须用平台自己的方式构造：
+// 'D:/reports/x.md' 在 POSIX 上不是绝对路径（path.isAbsolute 为 false），
+// 那会让「绝对路径照用」这条在 Linux CI 上必然失败——路径语义不同，不是代码有错。
+const absOut = path.resolve(path.sep + 'reports' + path.sep + 'x.md');
 
 let n = 0;
 const t = (name, fn) => { fn(); n += 1; console.log('  ok ' + n + ' - ' + name); };
@@ -29,9 +33,10 @@ t('取不到工作区时落插件数据目录，不落 cwd', () => {
 });
 
 t('out 绝对路径照用', () => {
-  const r = resolveReportPath({ now, workspace: ws, home, out: 'D:/reports/x.md' });
+  const r = resolveReportPath({ now, workspace: ws, home, out: absOut });
   assert.equal(r.source, 'out');
-  assert.equal(r.path, 'D:/reports/x.md');
+  assert.equal(r.path, absOut);
+  assert.ok(path.isAbsolute(absOut), '测试自身要保证 out 真的是绝对路径');
 });
 
 t('out 相对路径以工作区为基准', () => {
@@ -48,7 +53,7 @@ t('reportDir 优先于工作区缺省，但仍落后于 out', () => {
   const a = resolveReportPath({ now, workspace: ws, home, reportDir: 'r' });
   assert.equal(a.source, 'config.reportDir');
   assert.equal(a.path, path.join(ws, 'r', 'AUDIT-2026-11-16.md'));
-  const b = resolveReportPath({ now, workspace: ws, home, reportDir: 'r', out: 'D:/y.md' });
+  const b = resolveReportPath({ now, workspace: ws, home, reportDir: 'r', out: absOut });
   assert.equal(b.source, 'out');
 });
 

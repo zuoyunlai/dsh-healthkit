@@ -1,8 +1,26 @@
 // 面板：路由能挂上、只认回环、HTML 与 JSON 都能出。
 // 不需要真宿主——用一个假 webServer 收集注册，用假 res 收集响应。
 import assert from 'node:assert/strict';
-import { registerPanel, collectSummary } from '../src/panel.mjs';
-import { resolveWebServer } from '../index.js';
+import { makeTempHome } from './testenv.mjs';
+
+// 面板测试跑在临时 HOME 上（CI 上没有 ~/.dsh）。
+// **必须动态 import**：ESM 的静态 import 会在模块求值时先执行，
+// 那时 DSH_HOME 还没设上，模块内已经按真机 HOME 初始化过了。
+const tmpHome = makeTempHome('healthkit-panel-');
+process.env.DSH_HOME = tmpHome;
+
+const { registerPanel, collectSummary } = await import('../src/panel.mjs');
+const { resolveWebServer } = await import('../index.js');
+const { append } = await import('../src/history.mjs');
+
+// 折线需要至少两个数据点：临时 HOME 里先记两笔账。
+// （CI 上没有 ~/.dsh，账本是空的 → 折线画不出来，这是环境差异不是缺陷。）
+{
+  const fake = { score: { total: 8.1, raw: 8.1, band: '可用', scenario: 'general' }, findings: [], retired: [] };
+  append(fake, { scenario: 'general' });
+  fake.score.total = 8.4;
+  append(fake, { scenario: 'general' });
+}
 
 const routes = {};
 const fakeWs = { register(r) { routes[r.path] = r; return () => {}; } };
@@ -30,7 +48,7 @@ const reqRemote = { url: '/dsh-healthkit-panel', socket: { remoteAddress: '192.1
   // 服务端渲染：分数直接出现在 HTML 里，不依赖客户端 JS（侧边栏 iframe 禁脚本也能看）
   assert.ok(/<div class="v">\d+(\.\d+)?<\/div>/.test(res.body), 'HTML 应含服务端渲染的分数');
   assert.ok(res.body.includes('<meta http-equiv="refresh"'), '应有 meta 自刷新（不用 JS）');
-  assert.ok(res.body.includes('<polyline'), '应有趋势折线');
+  assert.ok(res.body.includes('<polyline'), '应有趋势折线（需至少两个数据点）');
   assert.ok(res.body.includes('能力域'), '应有能力域段');
   assert.ok(!/https?:\/\//.test(res.body.replace(/http:\/\/127\.0\.0\.1/g, '')), 'HTML 不应有外链（离线可用）');
 }

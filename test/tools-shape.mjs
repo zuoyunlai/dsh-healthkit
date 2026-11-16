@@ -1,6 +1,12 @@
 // 三个「解释型」工具的形状与行为：能在真机上取到数，且空参/错参不崩。
 import assert from 'node:assert/strict';
-import { buildTools } from '../index.js';
+import { makeTempHome } from './testenv.mjs';
+
+// 跑在临时 HOME 上：CI（ubuntu runner）没有 ~/.dsh，用真机必然红。
+// 动态 import：静态 import 会在 DSH_HOME 设上之前完成模块求值。
+process.env.DSH_HOME = makeTempHome('healthkit-shape-', true);
+
+const { buildTools } = await import('../index.js');
 
 const byName = {};
 for (const t of buildTools({})) byName[t.name] = t;
@@ -57,6 +63,7 @@ assert.ok(/装插件|阶梯/.test(cp.summary), '摘要里应有补救阶梯');
 // 0.6.0 时它漏写了 trim，7.0 又漏了 capabilities，文案落后于代码没人会发现。
 {
   const { inspect } = await import('../src/init.mjs');
+
   // 只看「工具面会出现…」那一条；别的 step 也会提到 audit_report，混起来会多数。
   const step = inspect().steps.find(function (s) { return s.indexOf('工具面会出现') > -1; }) || '';
   const listed = [...new Set(step.match(/audit_[a-z]+/g) || [])];
