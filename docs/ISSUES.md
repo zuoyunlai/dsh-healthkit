@@ -16,3 +16,21 @@
 - **教训**：宿主插件里 `process.cwd()` 不是「用户的工作目录」。要目录就问 `workingDirectory` 服务
   （`wd.get(exec.agent.session)`）；要不到就用自己拥有的目录兜底，别用进程 cwd。
 - **遗留**：误落的那份 `profiles/desktop/AUDIT-2026-11-16.md` 已删除（git 未跟踪）。
+
+## #2（已修，0.11.1）宿主重复触发 inject 回调 → 面板挂两遍，自己的那份一条没挂上
+
+- **现象**：真宿主 `$DSH_HOME/dsh-healthkit/plugin-status.json` 里
+  `panel.attempts` 三条路由全报 `duplicate exact route`、`routes: 0`，但
+  `GET /dsh-healthkit-panel/api/summary` 返回 200 且数据正常——因为对外服务的是**另一份**挂载。
+- **根因**：幂等判断写的是 `state.panel.ok`，而它要等 `import('./src/panel.mjs')` 完成后才置真。
+  宿主在服务重发布时会把 inject 回调再唤一次，两次回调都在 import **之前**通过判断，
+  于是各挂一遍；第二次全撞 duplicate。`registerAll` 有同样结构，只是 tools 的回调恰好只来一次。
+- **影响**：面板看起来正常，实际上插件自己这份没挂上；status 里的 duplicate 会让人误判成
+  「插件重复安装」，去查一个不存在的问题。工具面不受影响。
+- **修法**：面板改用一个**同步**的 `panelMounting` 旗（回调第一行即置上，失败时放开以便重试）；
+  `registerAll` 以「本轮已注册过」为幂等条件。见 CHANGELOG 0.11.1。
+- **回归**：`test/apply-inject.mjs` 让 inject 回调触发两次，断言路由仍只有 3 条
+  （未修前实测 6 条）。
+- **教训**：`inject` 回调的幂等旗必须在**同步段**立起来。任何「等 await / 动态 import 之后再判断」
+  的守卫都挡不住重入——这和「乐观锁要写在临界区入口」是同一类错误。
+
