@@ -51,4 +51,16 @@ assert.equal(typeof cp.missing, 'number');
 assert.ok(cp.rows.length === 20, '能力域应为 20 个，实得 ' + cp.rows.length);
 assert.ok(/装插件|阶梯/.test(cp.summary), '摘要里应有补救阶梯');
 
-console.log('tools-shape: 通过（findings ' + f.total + ' / plan ' + p.base + '→' + p.potentialAll + ' / trim ' + tm.suggestions.length + ' 条 / 能力域 ' + cp.rows.length + ' 个）');
+// --init 的「工具面」文案必须与真实工具数一致：
+// 0.6.0 时它漏写了 trim，7.0 又漏了 capabilities，文案落后于代码没人会发现。
+{
+  const { inspect } = await import('../src/init.mjs');
+  // 只看「工具面会出现…」那一条；别的 step 也会提到 audit_report，混起来会多数。
+  const step = inspect().steps.find(function (s) { return s.indexOf('工具面会出现') > -1; }) || '';
+  const listed = [...new Set(step.match(/audit_[a-z]+/g) || [])];
+  const names = Object.keys(byName);
+  assert.equal(listed.length, names.length, 'init 文案里的工具数与实际不符：文案 ' + listed.length + ' / 实际 ' + names.length);
+  for (const n of names) assert.ok(listed.includes(n), 'init 文案漏了工具 ' + n);
+}
+
+console.log('tools-shape: 通过（' + Object.keys(byName).length + ' 工具 / findings ' + f.total + ' / plan ' + p.base + '→' + p.potentialAll + ' / trim ' + tm.suggestions.length + ' 条 / 能力域 ' + cp.rows.length + ' 个）');
