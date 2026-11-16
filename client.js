@@ -63,12 +63,22 @@ window.__ModuleLoader__.load({
       } catch (e) { return I18N.zh; }
     }
 
+    // 侧栏标签 chip / 指南卡片的图标 = 仓库根 logo.svg 的同一份几何（绿色圆角底 + 白色手形）。
+    // 宿主不会把 package.json 的 icon 文件塞进标签：`sidebar.right.pane.tab.title` 是唯一能画图的地方，
+    // 而面板跑在 web 端、插件静态文件没有公开 URL，所以只能把路径内联进来（不能 <img src>）。
+    const LOGO_VIEWBOX = '0 0 658.9 658.9';
+    const LOGO_PATH = 'M437.13 104.46c-42.38,0 -81.78,19.26 -107.89,52.66 -26.12,-32.97 -65.51,-52.66 -107.9,-52.66 -76.63,0 -139.14,63.79 -139.14,142.14 0,35.11 12.84,69.36 36.39,95.48 9.85,11.99 19.69,23.98 29.54,35.54l87.77 -62.08c7.28,-5.14 17.55,-3.86 23.12,2.99l32.97 40.25 75.78 -66.36c7.28,-6.43 17.98,-5.57 23.98,1.71 6.42,7.28 5.56,17.98 -1.72,23.97l-89.05 77.93c-7.28,6.42 -18.41,5.56 -24.41,-2.14l-33.82 -41.53 -71.93 50.95c59.09,69.36 133.58,151.13 158.42,151.13 32.11,0 158.41,-148.57 210.65,-212.36 23.54,-26.54 36.82,-60.37 36.82,-95.9 0,-78.36 -62.51,-141.72 -139.58,-141.72l0 0z';
+
     function icon(size) {
       const s = size || 16;
       return h('svg', {
-        width: s, height: s, viewBox: '0 0 24 24', fill: 'none',
-        stroke: C.accent, strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round',
-      }, h('path', { d: 'M3 12h4l2 6 4-14 2 8h6' }));
+        width: s, height: s, viewBox: LOGO_VIEWBOX,
+        style: { display: 'block', flex: 'none' },
+        'aria-hidden': 'true', focusable: 'false',
+      },
+        h('rect', { width: 658.9, height: 658.9, rx: 65.98, ry: 65.98, fill: '#6EAB3B' }),
+        h('path', { fill: '#FEFEFE', fillRule: 'nonzero', d: LOGO_PATH }),
+      );
     }
 
     function badge(text, color) {

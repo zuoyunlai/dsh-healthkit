@@ -26,8 +26,11 @@
     "access": "public"
   },
   "main": "./index.js",
+  "icon": "./logo.svg",
   "exports": {
     ".": "./index.js",
+    "./icon": "./logo.svg",
+    "./logo.svg": "./logo.svg",
     "./client": "./client.js",
     "./client.js": "./client.js",
     "./engine": "./src/engine.mjs",
@@ -40,6 +43,7 @@
   "files": [
     "index.js",
     "client.js",
+    "logo.svg",
     "cordis.patch.yml",
     "src/*.mjs",
     "bin/audit.mjs",
