@@ -1,6 +1,6 @@
 {
   "name": "dsh-healthkit",
-  "version": "0.5.2",
+  "version": "0.5.3",
   "type": "module",
   "license": "MIT",
   "repository": {
@@ -28,7 +28,10 @@
   "main": "./index.js",
   "exports": {
     ".": "./index.js",
+    "./client": "./client.js",
+    "./client.js": "./client.js",
     "./engine": "./src/engine.mjs",
+    "./cordis.patch.yml": "./cordis.patch.yml",
     "./package.json": "./package.json"
   },
   "bin": {
@@ -36,6 +39,7 @@
   },
   "files": [
     "index.js",
+    "client.js",
     "cordis.patch.yml",
     "src/*.mjs",
     "bin/audit.mjs",
@@ -54,6 +58,14 @@
       "patch": "./cordis.patch.yml"
     },
     "manifestVersion": 1,
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-client-ui-sidebar-right",
+        "@deepseek-ai/dsh-client-ui-slots"
+      ]
+    },
     "capabilities": [
       "tools:register",
       "fs:read"
@@ -74,6 +86,18 @@
     "disclosure": {
       "endpoints": [],
       "retention": "审计产物写会话工作区（AUDIT-<日期>.md）；证据快照、退役记录在 $DSH_HOME/dsh-healthkit/；不联网、不上传会话内容"
+    }
+  },
+  "peerDependencies": {
+    "@deepseek-ai/dsh-client-ui-sidebar-right": "^0.2.1-rc.1",
+    "react": ">=18.2.0"
+  },
+  "peerDependenciesMeta": {
+    "@deepseek-ai/dsh-client-ui-sidebar-right": {
+      "optional": true
+    },
+    "react": {
+      "optional": true
     }
   },
   "engines": {

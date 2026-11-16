@@ -27,7 +27,9 @@ const reqRemote = { url: '/dsh-healthkit-panel', socket: { remoteAddress: '192.1
   routes['/dsh-healthkit-panel'].handler(reqLocal, res);
   assert.equal(res.status, 200);
   assert.ok(res.body.includes('DSH 体检'), 'HTML 应含标题');
-  assert.ok(res.body.includes('api/summary'), 'HTML 应引用自己的 API');
+  // 服务端渲染：分数直接出现在 HTML 里，不依赖客户端 JS（侧边栏 iframe 禁脚本也能看）
+  assert.ok(/<div class="v">\d+(\.\d+)?<\/div>/.test(res.body), 'HTML 应含服务端渲染的分数');
+  assert.ok(res.body.includes('<meta http-equiv="refresh"'), '应有 meta 自刷新（不用 JS）');
   assert.ok(!/https?:\/\//.test(res.body.replace(/http:\/\/127\.0\.0\.1/g, '')), 'HTML 不应有外链（离线可用）');
 }
 

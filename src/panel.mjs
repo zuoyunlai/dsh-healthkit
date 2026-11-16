@@ -84,8 +84,8 @@ const CSS = [
   'body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.55 -apple-system,"Segoe UI",system-ui,sans-serif;padding:20px}',
   'header{display:flex;align-items:baseline;gap:12px;margin-bottom:18px}',
   'h1{font-size:18px;margin:0;font-weight:600}',
-  'button{background:var(--card);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:6px 12px;cursor:pointer;font-size:13px}',
-  'button:hover{border-color:var(--accent)}',
+  'button,a.btn{background:var(--card);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:6px 12px;cursor:pointer;font-size:13px;text-decoration:none}',
+  'button:hover,a.btn:hover{border-color:var(--accent)}',
   '.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:14px;align-items:start}',
   '.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px}',
   '.k{color:var(--dim);font-size:12px;margin-bottom:6px}',
@@ -103,57 +103,74 @@ const CSS = [
   '.dim{color:var(--dim);font-size:12px}',
   'footer{margin-top:18px;color:var(--dim);font-size:12px}',
 ].join('\n');
+// ---- 服务端渲染：面板不依赖任何客户端 JS ----
+//
+// 2026-11-16 真机反馈：系统浏览器能看，DSH 侧边栏 iframe 看不到内容。
+// 响应头里没有任何 X-Frame-Options / CSP，所以不是被 header 拦，而是侧边栏 iframe
+// 的沙箱不给脚本执行权——而这个面板原本全靠 <script> 渲染，于是整页空白。
+// 改成把数据直接渲染进 HTML（数据本来就在服务端算好），并用 <meta refresh> 自刷新，
+// 这样在禁脚本的沙箱里也能正常显示。
 
-const JS = [
-  'function el(tag, cls, txt){var e=document.createElement(tag);if(cls)e.className=cls;if(txt!=null)e.textContent=String(txt);return e}',
-  'function sev(s){return el("span","sev s-"+s,s)}',
-  'function mb(n){return n>=1073741824?(n/1073741824).toFixed(1)+" GB":(n/1048576).toFixed(1)+" MB"}',
-  'function setText(id,t){document.getElementById(id).textContent=t}',
-  'function renderSev(d){var box=document.getElementById("sev");box.textContent="";',
-  '  [["P0",d.p0],["P1",d.p1],["P2",d.p2],["INFO",d.info]].forEach(function(p){box.appendChild(sev(p[0]));box.appendChild(el("b",null," "+p[1]));})}',
-  'function renderTop(items){var box=document.getElementById("top");box.textContent="";',
-  '  if(!items.length){box.appendChild(el("div","dim","没有未解决的问题"));return}',
-  '  items.forEach(function(x){var row=el("div","item");row.appendChild(sev(x.severity));',
-  '    var w=el("div");w.appendChild(el("b",null,x.ruleId));w.appendChild(el("span",null," "+x.title));',
-  '    if(x.fixHint)w.appendChild(el("div","dim",x.fixHint));',
-  '    w.appendChild(el("div","fp",x.fp));row.appendChild(w);box.appendChild(row)})}',
-  'async function load(){',
-  '  var d=window.__SUMMARY__;',
-  '  if(!d){var r=await fetch("' + PREFIX + '/api/summary",{cache:"no-store"});d=await r.json()}',
-  '  setText("score",d.score);setText("band",d.band);renderSev(d);',
-  '  setText("findings",d.findings);setText("retired",d.retired);',
-  '  var dl=(typeof d.trend.delta==="number")?d.trend.delta:null;',
-  '  setText("trend",d.trend.latest+(dl===null?"（首次）":(dl>=0?" (+"+dl+")":" ("+dl+")")));',
-  '  setText("runs",d.trend.runs+" 次 / "+d.trend.daysTracked+" 天");',
-  '  setText("spark",d.trend.sparkline||"—");',
-  '  setText("clean",d.clean?mb(d.clean.bytes):"未知");',
-  '  setText("cleanSub",d.clean?d.clean.candidates+" 组可清理（先预览再生效）":"");',
-  '  if(d.trim){setText("trim",d.trim.served+" / "+d.trim.maxBundles);setText("trimSub",d.trim.groups+" 组能力冗余")}',
-  '  renderTop(d.top);',
-  '  setText("at","更新 "+String(d.at).replace("T"," ").slice(0,19));',
-  '}',
-  'document.getElementById("refresh").onclick=function(){load().catch(function(e){setText("at","刷新失败："+e.message)})};',
-  'load().catch(function(e){setText("at","加载失败："+e.message)});',
-].join('\n');
+const esc = (s) => String(s == null ? '' : s)
+  .replace(/&/g, '&amp;')
+  .replace(/</g, '&lt;')
+  .replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;');
 
-export function pageHtml() {
+const SEVS = ['P0', 'P1', 'P2', 'INFO'];
+
+function sevBadge(x) {
+  return '<span class="sev s-' + x + '">' + x + '</span>';
+}
+
+function mbOf(n) {
+  if (typeof n !== 'number' || !isFinite(n) || n <= 0) return '0 B';
+  if (n >= 1073741824) return (n / 1073741824).toFixed(1) + ' GB';
+  return (n / 1048576).toFixed(1) + ' MB';
+}
+
+export function pageHtml(data) {
+  const d = data || collectSummary();
+  const sevRow = SEVS.map(function (k) {
+    const n = k === 'INFO' ? d.info : d[k.toLowerCase()];
+    return sevBadge(k) + ' <b>' + n + '</b>';
+  }).join(' ');
+
+  const delta = typeof d.trend.delta === 'number' ? d.trend.delta : null;
+  const trendTxt = d.trend.latest + (delta === null ? '（首次）' : (delta >= 0 ? ' (+' + delta + ')' : ' (' + delta + ')'));
+  const cleanTxt = d.clean ? mbOf(d.clean.bytes) : '未知';
+  const cleanSub = d.clean ? d.clean.candidates + ' 组可清理（先预览再生效）' : '';
+  const trimV = d.trim ? d.trim.served + ' / ' + d.trim.maxBundles : '—';
+  const trimSub = d.trim ? d.trim.groups + ' 组能力冗余' : '';
+
+  const items = d.top.length
+    ? d.top.map(function (x) {
+        return '<div class="item">' + sevBadge(x.severity) +
+          '<div><b>' + esc(x.ruleId) + '</b> ' + esc(x.title) +
+          (x.fixHint ? '<div class="dim">' + esc(x.fixHint) + '</div>' : '') +
+          '<div class="fp">' + esc(x.fp) + '</div></div></div>';
+      }).join('')
+    : '<div class="dim">没有未解决的问题</div>';
+
+  const cards = [
+    '<div class="card"><div class="k">总分（10 分制）</div><div class="v">' + d.score + '</div><div class="row">' + sevRow + '</div></div>',
+    '<div class="card"><div class="k">分档</div><div class="v">' + esc(d.band) + '</div><div class="dim">更新 ' + esc(String(d.at).replace('T', ' ').slice(0, 19)) + '</div></div>',
+    '<div class="card"><div class="k">未解决 / 已退役</div><div class="v">' + d.findings + ' <small>/ ' + d.retired + '</small></div></div>',
+    '<div class="card"><div class="k">最新分 / 记账</div><div class="v">' + esc(trendTxt) + '</div><div class="dim">' + d.trend.runs + ' 次 / ' + d.trend.daysTracked + ' 天</div><div class="dim" style="font-family:ui-monospace,monospace;font-size:16px">' + esc(d.trend.sparkline || '—') + '</div></div>',
+    '<div class="card"><div class="k">可清理空间</div><div class="v">' + esc(cleanTxt) + '</div><div class="dim">' + esc(cleanSub) + '</div></div>',
+    '<div class="card"><div class="k">服务插件 / 上限</div><div class="v">' + esc(trimV) + '</div><div class="dim">' + esc(trimSub) + '</div></div>',
+  ].join('');
+
   return [
     '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">',
+    '<meta http-equiv="refresh" content="60">',
     '<meta name="viewport" content="width=device-width,initial-scale=1">',
     '<title>DSH 体检</title><style>' + CSS + '</style></head><body>',
     '<header><h1>DSH 体检</h1><span class="dim">只读 · 不写配置 · 不联网</span>',
-    '<span style="flex:1"></span><button id="refresh">刷新</button></header>',
-    '<div class="grid">',
-    '<div class="card"><div class="k">总分（10 分制）</div><div class="v" id="score">—</div><div class="row" id="sev"></div></div>',
-    '<div class="card"><div class="k">分档</div><div class="v" id="band">—</div><div class="dim" id="at">加载中…</div></div>',
-    '<div class="card"><div class="k">未解决 / 已退役</div><div class="v"><span id="findings">—</span> <small>/ <span id="retired">—</span></small></div></div>',
-    '<div class="card"><div class="k">最新分 / 记账</div><div class="v" id="trend">—</div><div class="dim" id="runs"></div><div class="dim" id="spark" style="font-family:ui-monospace,monospace;font-size:16px"></div></div>',
-    '<div class="card"><div class="k">可清理空间</div><div class="v" id="clean">—</div><div class="dim" id="cleanSub"></div></div>',
-    '<div class="card"><div class="k">服务插件 / 上限</div><div class="v" id="trim">—</div><div class="dim" id="trimSub"></div></div>',
-    '</div>',
-    '<div class="card" style="margin-top:14px"><div class="k">先看这些（按严重度）</div><div id="top"></div></div>',
-    '<footer>数据来自本机 ~/.dsh；面板只读，清理与修复请走 audit_clean / CLI。每分钟缓存一次。</footer>',
-    '<script>' + JS + '</script>',
+    '<span style="flex:1"></span><a class="btn" href="?r=' + Date.now() + '">刷新</a></header>',
+    '<div class="grid">' + cards + '</div>',
+    '<div class="card" style="margin-top:14px"><div class="k">先看这些（按严重度）</div>' + items + '</div>',
+    '<footer>数据来自本机 ~/.dsh；面板只读，清理与修复请走 audit_clean / CLI。每分钟自动刷新；数据缓存 60 秒。</footer>',
     '</body></html>',
   ].join('\n');
 }
@@ -166,7 +183,8 @@ export function registerPanel(webServer) {
   }
   const page = function handler(req, res) {
     if (!loopbackOnly(req)) return sendJson(res, 403, { error: 'loopback only' });
-    try { sendHtml(res, pageHtml()); } catch (e) { sendJson(res, 500, { error: String((e && e.message) || e) }); }
+    try { sendHtml(res, pageHtml()); }
+    catch (e) { sendJson(res, 500, { error: String((e && e.message) || e) }); }
   };
   const api = function handler(req, res) {
     if (!loopbackOnly(req)) return sendJson(res, 403, { error: 'loopback only' });

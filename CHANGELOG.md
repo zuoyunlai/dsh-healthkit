@@ -1,5 +1,21 @@
 # CHANGELOG
 
+## 0.5.3 — 2026-11-16
+
+**面板从「独立网页」升级为「原生侧边栏面板」**，并修掉一个只有真机才暴露的坑。
+
+- **侧边栏 iframe 不给脚本执行权**：Host 半边的 `/dsh-healthkit-panel` 是独立网页，
+  放进侧边栏的 iframe 浏览器时脚本不执行 → 页面空白（系统浏览器打开正常，响应头里也没有
+  `X-Frame-Options`/CSP，所以不是被 header 拦）。两处处置：
+  1. Host 面板改为**服务端渲染**：数据直接写进 HTML，页面零 `<script>`，
+     自动刷新用 `<meta http-equiv="refresh">`；
+  2. 新增 **Client 半边 `client.js`**：走 `sidebarRightTabs.register` + `slots` 直接长在右侧栏里，
+     不占端口、不用记地址、不经过 iframe。形态照 dsh-chronicle（`window.__ModuleLoader__` +
+     手写 `createElement`，无 JSX、无构建步骤）。
+- 面板数据仍只走 Host 的只读 JSON API（`/dsh-healthkit-panel/api/summary`），Client 侧不做计算。
+- `package.json`：新增 `exports["./client"]`、`dsh.client`（platform: web + inject 三项）、
+  `peerDependencies`（sidebar-right / react，均 optional）。`files` 收录 `client.js`。
+
 ## 0.5.2 — 2026-11-16
 
 **面板挂不上（真宿主实测）**：`plugin-status.json` 里 `panel.ok = false`，
