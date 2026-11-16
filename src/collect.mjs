@@ -38,6 +38,20 @@ export function collect(ctxOpts) {
     var excl = null;
     if (wsText && yaml) { try { var ws = yaml.parse(wsText); excl = ws.minimumReleaseAgeExclude || []; } catch (e) { excl = null; } }
     facts.exclusions[name] = excl;
+    // file:/link: 依赖的目标是否存在——**在采集阶段判定**（涉及真实文件系统，
+    // 平台相关）。规则层只读事实，这样夹具在任何机器上结论一致。
+    var localDeps = [];
+    for (var k2 = 0; k2 < deps.length; k2++) {
+      var d2 = deps[k2];
+      var spec2 = depSpecs[d2];
+      if (!spec2) continue;
+      var m2 = String(spec2).match(/^(file|link):(.+)$/);
+      if (!m2) continue;
+      var t2 = path.isAbsolute(m2[2]) ? m2[2] : path.resolve(dir, m2[2]);
+      var ex2 = false;
+      try { ex2 = fs.existsSync(t2); } catch (e) { ex2 = false; }
+      localDeps.push({ dep: d2, spec: String(spec2), target: t2, exists: ex2 });
+    }
     facts.profiles.push({
       name: name, dir: dir, deps: deps, bundles: bundles, thirdPartyBundles: third,
       bundlesMissingFromDeps: missing,
@@ -45,7 +59,7 @@ export function collect(ctxOpts) {
         var j = readJson(path.join(dir, 'node_modules', d, 'package.json'), null);
         return !!(j && (j.dsh || /dsh-/i.test(j.name || d)));
       }),
-      depsNotBundledRaw: notBundledRaw, installed: installed, depSpecs: depSpecs,
+      depsNotBundledRaw: notBundledRaw, installed: installed, depSpecs: depSpecs, localDeps: localDeps,
       bakFiles: listFiles(dir).filter(function (f) { return /[.]bak/.test(f); }),
       patchBytes: patchText ? patchText.length : 0
     });

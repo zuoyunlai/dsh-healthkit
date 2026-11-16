@@ -341,17 +341,15 @@ export function runRules(facts, allowlist) {
   // ---- R22 file:/link: 依赖目标存在性（开发仓与 profile 的耦合断点）----
   facts.profiles.forEach(function (p) {
     var broken = [];
-    p.deps.forEach(function (d) {
-      var v = (p.installed && p.installed[d]) || null;
-      var spec = null;
-      Object.keys(p.depSpecs || {}).forEach(function (k) { if (k === d) spec = p.depSpecs[k]; });
-      if (!spec) return;
-      var m = String(spec).match(/^(file|link):(.+)$/);
-      if (!m) return;
-      var target = m[2];
-      var ok = false;
-      try { ok = fs.existsSync(target); } catch (e) { ok = false; }
-      if (!ok) broken.push({ dep: d, spec: spec });
+    // 存在性在采集阶段已判定（facts.profiles[].localDeps），
+    // 规则层不再碰文件系统——否则夹具在本机与 CI 上结论会不同。
+    var locals = p.localDeps;
+    if (!Array.isArray(locals)) {
+      // 旧格式兜底：没有 localDeps 就算不出存在性，不报（宁可漏报也不误报）。
+      locals = [];
+    }
+    locals.forEach(function (x) {
+      if (x.exists === false) broken.push({ dep: x.dep, spec: x.spec, target: x.target });
     });
     if (broken.length) {
       out.push(F({ ruleId: 'R22', dimension: 'reliability', severity: 'P0',

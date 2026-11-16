@@ -188,12 +188,12 @@
         "dsh-image-gen": "0.11.2",
         "dsh-mnemon": "0.5.45",
         "dsh-ops": "0.5.5",
-        "dsh-pet-plugin": "file:E:/Documents/deepseek-harness/default-workspace/dsh-pet",
+        "dsh-pet-plugin": "file:./_local/dsh-pet-plugin",
         "dsh-plugin-guide": "0.5.8",
         "dsh-primer": "0.4.7",
         "dsh-prompt": "0.4.41",
         "dsh-remote": "0.8.72",
-        "dsh-rightbar-quicknav": "link:E:/Documents/deepseek-harness/default-workspace/dsh-rightbar-quicknav",
+        "dsh-rightbar-quicknav": "link:./_local/dsh-rightbar-quicknav",
         "dsh-theme-palette": "1.13.6",
         "dsh-unlag": "1.17.5",
         "dsh-wsl-tool": "2.2.2",
@@ -201,7 +201,19 @@
         "lunheng-article-pipeline": "19.27.18"
       },
       "bakFiles": [],
-      "patchBytes": 12603
+      "patchBytes": 12603,
+      "localDeps": [
+        {
+          "dep": "dsh-pet-plugin",
+          "spec": "file:./_local/dsh-pet-plugin",
+          "exists": true
+        },
+        {
+          "dep": "dsh-rightbar-quicknav",
+          "spec": "link:./_local/dsh-rightbar-quicknav",
+          "exists": true
+        }
+      ]
     },
     {
       "name": "web",
@@ -238,11 +250,23 @@
       "depSpecs": {
         "@deepseek-ai/schemastery": "3.18.5",
         "@dshworks/dsh-solidworks": "^0.2.1",
-        "dsh-pet-plugin": "file:E:/Documents/deepseek-harness/default-workspace/dsh-pet",
-        "dsh-theme-palette": "file:E:/Documents/deepseek-harness/default-workspace/dsh-theme-palette"
+        "dsh-pet-plugin": "file:./_local/dsh-pet-plugin",
+        "dsh-theme-palette": "file:./_local/dsh-theme-palette"
       },
       "bakFiles": [],
-      "patchBytes": 5407
+      "patchBytes": 5407,
+      "localDeps": [
+        {
+          "dep": "dsh-pet-plugin",
+          "spec": "file:./_local/dsh-pet-plugin",
+          "exists": true
+        },
+        {
+          "dep": "dsh-theme-palette",
+          "spec": "file:./_local/dsh-theme-palette",
+          "exists": true
+        }
+      ]
     }
   ],
   "patchEntries": {
