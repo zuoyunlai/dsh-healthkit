@@ -14,10 +14,10 @@
 | §4.3 补救阶梯 | ✅ 升到四级：配置 → provider → 插件 → 习惯。保留「装插件建议必须说明为什么配置补不上」的硬规则（`assertPluginAdvice()` 逐条校验） |
 | §4.4 推荐实体 | ⚠️ 只实现 Recommendation 的**状态与阶梯**部分；market 字段不做（见下） |
 | §7 目录布局 | ⚠️ 实现 `runs/`（运行快照）与差异归因；`snapshots/` `fixes/` `pending-verify.json` 不做（见下） |
-| §11 工具面 | ✅ audit_run / report / findings / explain / plan / trim / capabilities / retire / diff / clean / trend 共 11 个；**audit_plan_fix / audit_verify / audit_score 未做**（它们属于修复引擎，见下） |
+| §11 工具面 | ✅ audit_run / report / findings / explain / plan / trim / capabilities / retire / diff / clean / trend / verify / check / recommend 共 14 个；**audit_plan_fix / audit_verify / audit_score 未做**（它们属于修复引擎，见下） |
 | §13.7 自审分离 | ✅ 报告新增「本插件自身状态」一节，**不参与评分** |
 | §16.2 假阳性专区 | ✅ `fixtures/retired/` + `test/false-positive-zone.mjs` |
-| §16.3 降级 | ✅ `test/degradation.mjs`，4 个场景，要求出 UNKNOWN 不崩也不假绿 |
+| §16.3 降级 | ✅ `test/degradation.mjs`，9 个场景，要求出 UNKNOWN 不崩也不假绿 |
 | §16.5 通用性 | ✅ `test/portability.mjs`：临时 DSH_HOME + 怪 profile 名 + 陌生 bundle + 改名后仍跑通 |
 | §15 P6 面板与趋势 | ✅ 原生侧边栏面板 + 网页面板 + SVG 折线 + 每周自动化 |
 
