@@ -2,6 +2,10 @@
 
 ## 0.4.1 — 2026-11-16
 
+**包名定为 `dsh-healthkit`**（显示名仍是「DSH 体检」）。改名原因：npm 拒绝 `dsh-auditkit` ——
+与已存在的 `dsh-audit-kit`（另一位作者的 DSH 插件审计器）判为过于相似，403 不放行。
+改的是包名与 bundle 名；`$DSH_HOME/dsh-auditkit/` 数据目录**不动**（账本、退役库、回收区不迁移）。
+
 修 issue #1：`audit_report` 的缺省 out 落到了 profile 目录而不是会话工作区。
 
 - **根因**：0.4.0 用 `path.join(process.cwd(), 'AUDIT-<日期>.md')`，而宿主是 Electron 应用，
@@ -16,8 +20,8 @@
 - 工具描述与 `out` 参数说明同步订正；返回值新增 `via`（`workspace|out|config.reportDir|fallback`），
   `plugin-status.json` 新增 `processCwd` 供事后核对。
 - 顺带修测试封闭性：R9 改为优先吃 `facts.machines`（采集快照/夹具），只有快照没有时才回落读活注册表。
-  此前 fixture 用例会因真实注册表被修好而变红。
 - 新增 `test/reportpath.mjs`（8 条断言），`npm test` 已串上。
+- `bin` 路径去掉前导 `./`：npm 判其非法并从发布物移除，装完会没有 `dsh-healthkit` 命令。
 
 ## 0.4.0 — 2026-11-16
 

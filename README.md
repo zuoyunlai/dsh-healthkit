@@ -1,4 +1,4 @@
-# DSH 体检（dsh-auditkit）
+# DSH 体检（dsh-healthkit）
 
 给 DeepSeek Harness 做体检：**跑一次，给 0–10 分、分维度明细，以及「先修哪几条最划算」**。
 
@@ -7,6 +7,10 @@
 ## 安装
 
 ```bash
+# 发布版（npm）
+dsh plugin --profile <profile> add dsh-healthkit
+
+# 开发版（符号链接，改源码重启即生效）
 dsh plugin --profile <profile> add link:/path/to/dsh-auditkit
 ```
 
