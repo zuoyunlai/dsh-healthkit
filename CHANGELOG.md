@@ -1,5 +1,29 @@
 # CHANGELOG
 
+## 0.8.0 — 2026-11-16
+
+补齐 PLAN-2026-11-16.md 里没落实的四块。
+
+- **P4 六态判定**（原只做四态）：现在按 §4.2 给出 present / missing / redundant / **degraded** / **conflicting** / unknown。
+  本机实测判据：
+  · `conflicting`：抓取能力被两个实现同时接管（`fetchProviderTakeover: true` 与宿主 `web.fetchProvider` 并存）；
+  · `degraded`：模型路由声明 8 个 provider 但只有 1 个有压缩策略；默认档位是 `danger-full-access`；成本记账停更 20 天；
+  · `redundant`：视觉理解 2 套、记忆 4 套、主题/面板 3 套同时挂着。
+  当前分布：有 8 / 多 4 / 冲突 1 / 失效 2 / 无 1 / 无法判定 4。
+- **补救阶梯升到四级**（原三级）：配置 → provider → 插件 → 习惯。
+  保留 PLAN 的硬规则：任何指向「装插件」的建议必须写明「为什么只用配置补不上」，
+  写不出就不许出——`assertPluginAdvice()` 会在渲染时逐条检查，违规行会被标出来。
+- **§13.7 自审分离**：报告新增「本插件自身状态」一节（版本 / 工具面 / 数据目录 / 账本次数 / 退役条数），
+  **不参与评分**——体检器自己出问题不影响被检对象的分数。
+- **P2 `audit_retire` 工具面**：误报记档上工具了，原因必填（没理由不给默认）。
+  与 CLI `--retire` 共用同一份逻辑（engine 的 load/saveRetirements）。不带参数时列出可记档候选。
+  工具面 9 → 10。
+- **§16 假阳性专区**：`fixtures/retired/` 每个退役项一个 fixture + `test/false-positive-zone.mjs`。
+  断言的是「退役机制正确」而不是「规则改对了」——规则可以继续命中，退役负责让它闭嘴。
+- **§16 降级测试**：`test/degradation.mjs` 覆盖 4 个场景（记账文件缺失 / YAML 不可用 / 装载日志缺失 /
+  机器注册表缺失），要求**出 UNKNOWN 而不是崩溃，也不许假绿**；反向断言证据齐全时 UNKNOWN 占比不过高。
+- 面板与侧边栏的能力域段改为展示六态与「有缺口的域」（不再只列多实现/无实现）。
+
 ## 0.7.0 — 2026-11-16
 
 补齐 P3 与 P5。

@@ -17,7 +17,7 @@ dsh plugin --profile <profile> add link:/path/to/dsh-healthkit
 开发期用 `link:`（符号链接，改源码重启宿主即生效）。`file:` 是拷贝，改源码不生效，
 得 `dsh plugin --profile <profile> install --force` 重装。装完重启宿主一次。
 
-## 八个工具
+## 十个工具
 
 | 工具 | 干什么 |
 | --- | --- |
@@ -29,6 +29,8 @@ dsh plugin --profile <profile> add link:/path/to/dsh-healthkit
 | `audit_explain` | 解释某一条：维度、证据、测到的值、置信度、修法 |
 | `audit_plan` | 修复顺序：先解 P0 封顶，再按单条增量排，给出全修完的终点 |
 | `audit_trim` | 装载面瘦身：同能力多实现、超 bundles 上限、记忆插件叠放，给主备候选 |
+| `audit_capabilities` | 能力域矩阵：20 个域 × 六态（有/多/冲突/失效/无/未知），每缺口给四级补救阶梯 |
+| `audit_retire` | 误报记档（原因必填），之后不再计分 |
 
 不想用工具、只想在终端跑：
 

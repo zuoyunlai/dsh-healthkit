@@ -53,8 +53,8 @@ const statusPath = path.join(home, 'dsh-healthkit', 'plugin-status.json');
 assert.ok(fs.existsSync(statusPath), 'apply 应写出 plugin-status.json');
 const st = JSON.parse(fs.readFileSync(statusPath, 'utf8'));
 
-assert.equal(st.registered.length, 9, '9 个工具都应注册，实得 ' + st.registered.length + ': ' + st.registered.join(','));
-for (const n of ['audit_run', 'audit_report', 'audit_clean', 'audit_trend', 'audit_findings', 'audit_explain', 'audit_plan', 'audit_trim', 'audit_capabilities']) {
+assert.equal(st.registered.length, 10, '10 个工具都应注册，实得 ' + st.registered.length + ': ' + st.registered.join(','));
+for (const n of ['audit_run', 'audit_report', 'audit_clean', 'audit_trend', 'audit_findings', 'audit_explain', 'audit_plan', 'audit_trim', 'audit_capabilities', 'audit_retire']) {
   assert.ok(st.registered.includes(n), '缺工具 ' + n);
 }
 assert.deepEqual(st.failures, [], '不应有注册失败：' + JSON.stringify(st.failures));
@@ -62,4 +62,4 @@ assert.equal(st.panel && st.panel.ok, true, '面板应挂上，实得 ' + JSON.s
 assert.equal(routes.length, 3, '应注册 3 条路由，实得 ' + routes.length);
 
 fs.rmSync(home, { recursive: true, force: true });
-console.log('apply-inject: 通过（9 工具 · 面板 3 路由 · failures 空）');
+console.log('apply-inject: 通过（10 工具 · 面板 3 路由 · failures 空）');

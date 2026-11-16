@@ -190,6 +190,22 @@ const CAPS_SCHEMA = {
   required: ['ok', 'redundant', 'missing', 'summary'],
 };
 
+
+const RETIRE_SCHEMA = {
+  type: 'object',
+  properties: {
+    action: { type: 'string' },
+    ok: { type: 'boolean' },
+    fp: { type: 'string' },
+    reason: { type: 'string' },
+    title: { type: 'string' },
+    total: { type: 'number' },
+    items: { type: 'array', items: { type: 'string' } },
+    summary: { type: 'string' },
+  },
+  required: ['action', 'ok', 'summary'],
+};
+
 // 工具表按「每次 apply 的依赖」构建：report 落点需要会话工作区解析器，
 // 不能写成模块级闭包（那样每个宿主实例会共享同一份依赖）。
 // inject 回调拿到的是 **ctx**，服务要经 .get(name) 取。
@@ -645,6 +661,59 @@ export function buildTools(deps) {
         unknown: b.unknown || 0,
         rows: mx.rows.map((x) => x.status.padEnd(9) + ' ' + x.label + (x.count ? ' ×' + x.count : '')),
         summary: cm.renderMatrix(mx),
+      };
+    },
+  },
+  {
+    name: 'audit_retire',
+    description: '误报记档：把一条体检发现标记为「已退役」（误报），之后不再计入评分也不再出现在问题清单。原因必填——没有理由的记档等于永久静音一条真问题。传 fp 或规则号；不带参数则列出当前可记档的候选',
+    parameters: {
+      type: 'object',
+      properties: {
+        finding: { type: 'string', description: '要记档的指纹 fp（如 R14#2f1a）或规则号（如 R14）；省略则只列候选' },
+        reason: { type: 'string', description: '为什么这是误报（必填，带 finding 时）' },
+        scenario: { type: 'string', description: 'general|code|design|writing，缺省 general' },
+      },
+      additionalProperties: false,
+    },
+    output: {
+      schema: RETIRE_SCHEMA,
+      render(_args, v) {
+        return text(v.summary);
+      },
+    },
+    execute: async (args) => {
+      const { audit } = await import('./src/engine.mjs');
+      const eng = await import('./src/engine.mjs');
+      const a = args || {};
+      const key = String(a.finding || '').trim();
+      const reason = String(a.reason || '').trim();
+
+      if (!key) {
+        const r = audit({ scenario: a.scenario || 'general' });
+        const cands = (r.allFindings || []).slice(0, 20).map((f) => f.severity + ' ' + f.ruleId + ' ' + f.fp + '  ' + f.title);
+        return {
+          action: 'list', ok: true, total: (r.allFindings || []).length, items: cands,
+          summary: '要记档哪一条？传 finding=<fp 或规则号> 与 reason="原因"。当前候选：\n' + (cands.length ? cands.map((c) => '- ' + c).join('\n') : '（没有可记档的问题）'),
+        };
+      }
+      if (!reason) {
+        return {
+          action: 'retire', ok: false, fp: key, reason: '',
+          summary: '记档必须给理由（reason 必填）。没有理由的记档等于永久静音一条可能为真的问题，所以这里不替你补默认理由。',
+        };
+      }
+      const r = audit({ scenario: a.scenario || 'general', skipRetire: true });
+      const hit = (r.allFindings || []).find((f) => f.fp === key) || (r.allFindings || []).find((f) => f.ruleId === key);
+      if (!hit) {
+        return { action: 'retire', ok: false, fp: key, reason: reason, summary: '没找到「' + key + '」这条发现，无法记档。先用 audit_findings 看当前有哪些。' };
+      }
+      const store = eng.loadRetirements(r.facts.home);
+      store[hit.fp] = { reason: reason, at: new Date().toISOString(), title: hit.title };
+      eng.saveRetirements(r.facts.home, store);
+      return {
+        action: 'retire', ok: true, fp: hit.fp, reason: reason, title: hit.title,
+        summary: '已记档：' + hit.fp + '（' + hit.title + '）\n理由：' + reason + '\n它不再计入评分，也不再出现在问题清单里。取消记档：删掉 $DSH_HOME/dsh-healthkit/retirements.json 里这条。',
       };
     },
   },

@@ -28,9 +28,8 @@ window.__ModuleLoader__.load({
         open: '未解决', cleanable: '可清理', plugins: '插件 / 上限', trend: '最新分',
         step1: '第一步', step2: '第二步', all: '全部修完', none: '没有未解决的问题',
         first: '首次', capped: '解除封顶', onlyOne: '只有 1 个数据点，再跑几次才有折线',
-        caps: '能力域', noRedundant: '没有多实现的域',
-        missingPrefix: '无实现：', missingTail: '（只表示当前没有，不代表该装）',
-        capsHint: '补救阶梯用 audit_capabilities：先配置 → 再宿主内置 → 最后才装插件',
+        caps: '能力域', noRedundant: '没有缺口的域',
+        capsHint: '四级补救阶梯用 audit_capabilities：配置 → provider → 插件 → 习惯',
       },
       en: {
         title: 'Checkup', refresh: 'Refresh', loading: 'Loading…', retry: 'Retry', error: 'Panel error: ',
@@ -41,9 +40,8 @@ window.__ModuleLoader__.load({
         open: 'Open', cleanable: 'Cleanable', plugins: 'Plugins / limit', trend: 'Latest',
         step1: 'Step 1', step2: 'Step 2', all: 'Fix everything', none: 'No open findings',
         first: 'first run', capped: 'uncapped', onlyOne: 'Only 1 data point — run a few more times',
-        caps: 'Capabilities', noRedundant: 'No duplicated capability',
-        missingPrefix: 'Missing: ', missingTail: ' (absence ≠ you need it)',
-        capsHint: 'Ladder via audit_capabilities: config → builtin → plugin last',
+        caps: 'Capabilities', noRedundant: 'No gaps',
+        capsHint: 'Four-step ladder via audit_capabilities: config → provider → plugin → habit',
       },
     };
 
@@ -264,18 +262,15 @@ window.__ModuleLoader__.load({
 
       const capsNode = d.capabilities
         ? h('div', null,
-            section(lang.caps + '（' + d.capabilities.ok + ' 有 / ' + d.capabilities.redundant + ' 多 / ' + d.capabilities.missing + ' 无）'),
+            section(lang.caps + '（' + d.capabilities.present + ' 有 / ' + d.capabilities.redundant + ' 多 / ' +
+              d.capabilities.conflicting + ' 冲突 / ' + d.capabilities.degraded + ' 失效 / ' + d.capabilities.missing + ' 无）'),
             h('ul', { style: { margin: 0, paddingLeft: 18 } },
-              (d.capabilities.redundantRows && d.capabilities.redundantRows.length
-                ? d.capabilities.redundantRows.map(function (x, i) {
+              (d.capabilities.rows && d.capabilities.rows.length
+                ? d.capabilities.rows.map(function (x, i) {
                     return h('li', { key: 'r' + i, style: { fontSize: 12, margin: '3px 0' } },
-                      h('b', null, x.label), ' · ' + x.count + ' 个实现：' + x.plugins.join('、'));
+                      h('b', null, x.label), ' · ' + x.status + '：' + x.detail);
                   })
-                : [h('li', { key: 'none', style: { fontSize: 12, color: C.dim } }, lang.noRedundant)]),
-              d.capabilities.missingRows && d.capabilities.missingRows.length
-                ? h('li', { key: 'miss', style: { fontSize: 12, color: C.dim, margin: '3px 0' } },
-                    lang.missingPrefix + d.capabilities.missingRows.join('、') + lang.missingTail)
-                : null),
+                : [h('li', { key: 'none', style: { fontSize: 12, color: C.dim } }, lang.noRedundant)])),
             h('div', { style: { fontSize: 10.5, color: C.dim, marginTop: 4 } }, lang.capsHint))
         : null;
 

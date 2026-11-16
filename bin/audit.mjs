@@ -62,7 +62,7 @@ var USAGE = [
   '  dsh-healthkit --dump-facts <路径> 导出采集到的原始事实',
   '',
   '误报记档：',
-  '  dsh-healthkit --retire <指纹或规则号> --reason "原因"',
+  '  dsh-healthkit --retire <指纹或规则号> --reason "原因"   （原因必填）',
   '  dsh-healthkit --list-retired',
   '',
   '清理（默认只预览，永不直删）：',
@@ -103,6 +103,24 @@ if (has('findings') || has('explain') || has('plan')) {
     else console.log(res2.summary);
     process.exit(res2 && res2.found === false ? 2 : 0);
   } catch (e) { console.error('failed: ' + e.message); process.exit(1); }
+}
+
+if (has('retire')) {
+  // 退役只能带理由——CLI 与 audit_retire 工具面共用同一份逻辑（engine 的 load/saveRetirements）。
+  var retireKey = arg('retire', null);
+  var retireReason = arg('reason', '');
+  if (!retireReason) { console.error('--retire 必须带 --reason "原因"'); process.exit(2); }
+  try {
+    var eng2 = await import('../src/engine.mjs');
+    var snap4 = audit({ scenario: arg('scenario', 'general'), skipRetire: true });
+    var hit4 = (snap4.allFindings || []).find(function (f) { return f.fp === retireKey || f.ruleId === retireKey; });
+    if (!hit4) { console.error('no finding matches: ' + retireKey); process.exit(2); }
+    var store4 = eng2.loadRetirements(snap4.facts.home);
+    store4[hit4.fp] = { reason: retireReason, at: new Date().toISOString(), title: hit4.title };
+    eng2.saveRetirements(snap4.facts.home, store4);
+    console.log('retired: ' + hit4.fp + '  (' + hit4.title + ')');
+    process.exit(0);
+  } catch (e) { console.error('retire failed: ' + e.message); process.exit(1); }
 }
 
 if (has('capabilities')) {

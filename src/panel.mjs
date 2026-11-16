@@ -141,12 +141,16 @@ export function collectSummary() {
   try {
     const mx = buildMatrix(r.facts);
     caps = {
-      ok: mx.byStatus.ok || 0,
+      present: mx.byStatus.present || 0,
       redundant: mx.byStatus.redundant || 0,
+      conflicting: mx.byStatus.conflicting || 0,
+      degraded: mx.byStatus.degraded || 0,
       missing: mx.byStatus.missing || 0,
       unknown: mx.byStatus.unknown || 0,
-      redundantRows: mx.rows.filter((x) => x.status === 'redundant').map((x) => ({ label: x.label, count: x.count, plugins: x.plugins })),
-      missingRows: mx.rows.filter((x) => x.status === 'missing').map((x) => x.label),
+      // 只展示「有缺口」的域；全 20 条塞进面板太长
+      rows: mx.rows
+        .filter((x) => x.status !== 'present')
+        .map((x) => ({ label: x.label, status: x.status, detail: x.detail })),
     };
   } catch (e) { caps = null; }
 
@@ -352,12 +356,11 @@ export function pageHtml(data) {
   if (!advice.length) advice.push('<li class="dim">暂时没有优化建议</li>');
 
   const capsBlock = d.capabilities
-    ? '<h2>能力域（' + d.capabilities.ok + ' 有 / ' + d.capabilities.redundant + ' 多 / ' + d.capabilities.missing + ' 无）</h2><div class="card"><ul>' +
-      (d.capabilities.redundantRows.length ? d.capabilities.redundantRows.map(function (x) {
-        return '<li><b>' + esc(x.label) + '</b> · ' + x.count + ' 个实现：' + esc(x.plugins.join('、')) + '</li>';
-      }).join('') : '<li class="dim">没有多实现的域</li>') +
-      (d.capabilities.missingRows.length ? '<li class="dim">无实现：' + esc(d.capabilities.missingRows.join('、')) + '（只表示当前没有，不代表该装）</li>' : '') +
-      '</ul><div class="dim" style="margin-top:6px">每个缺口的补救阶梯用 <b>audit_capabilities</b> 看：先配置 → 再宿主内置 → 最后才装插件。</div></div>'
+    ? '<h2>能力域（' + d.capabilities.present + ' 有 / ' + d.capabilities.redundant + ' 多 / ' + d.capabilities.conflicting + ' 冲突 / ' + d.capabilities.degraded + ' 失效 / ' + d.capabilities.missing + ' 无）</h2><div class="card"><ul>' +
+      (d.capabilities.rows && d.capabilities.rows.length ? d.capabilities.rows.map(function (x) {
+        return '<li><b>' + esc(x.label) + '</b> · ' + esc(x.status) + '：' + esc(x.detail) + '</li>';
+      }).join('') : '<li class="dim">没有能力域数据</li>') +
+      '</ul><div class="dim" style="margin-top:6px">每个缺口的四级补救阶梯（配置 → provider → 插件 → 习惯）用 <b>audit_capabilities</b> 看。</div></div>'
     : '';
 
   const retiredBlock = d.retiredList.length

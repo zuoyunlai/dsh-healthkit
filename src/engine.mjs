@@ -17,6 +17,18 @@ export function saveRetirements(home, store) {
 
 import { attribution } from './score.mjs';
 
+// 账本行数：self 段用。读不到就返回 null（不抛，体检器自己出问题不该影响体检结论）。
+function require_history(home) {
+  try {
+    var p = path.join(dataDir(home), 'history.jsonl');
+    if (!fs.existsSync(p)) return 0;
+    var txt = fs.readFileSync(p, 'utf8');
+    return txt.split(/\r?\n/).filter(function (l) { return l.trim(); }).length;
+  } catch (e) {
+    return null;
+  }
+}
+
 export function audit(opts) {
   opts = opts || {};
   var here = path.dirname(new URL(import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1'));
@@ -34,6 +46,21 @@ export function audit(opts) {
   var sc = score(rubric, kept, opts.scenario || 'general');
   var attr = attribution(rubric, kept, sc);
   var pkgVersion = (readJson(path.join(here, '..', 'package.json'), {}) || {}).version || '?';
-  var report = renderReport(facts, kept, sc, { retired: retired, attr: attr, version: pkgVersion });
-  return { facts: facts, findings: kept, retired: retired, allFindings: findings, score: sc, attribution: attr, report: report };
+  // §13.7 自审分离：self 段只描述体检器自身，不进评分。
+  var self = {
+    version: pkgVersion,
+    tools: opts.selfTools || [],
+    dataDir: dataDir(facts.home),
+    retiredCount: retired.length,
+    notes: [],
+  };
+  try {
+    var hist = require_history(facts.home);
+    self.historyRuns = hist;
+  } catch (e) {
+    self.historyRuns = null;
+    self.notes.push('账本读取失败：' + ((e && e.message) || e));
+  }
+  var report = renderReport(facts, kept, sc, { retired: retired, attr: attr, version: pkgVersion, self: self });
+  return { facts: facts, findings: kept, retired: retired, allFindings: findings, score: sc, attribution: attr, report: report, self: self };
 }

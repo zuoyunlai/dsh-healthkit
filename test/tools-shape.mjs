@@ -10,9 +10,10 @@ assert.ok(byName.audit_explain, 'audit_explain 缺');
 assert.ok(byName.audit_plan, 'audit_plan 缺');
 assert.ok(byName.audit_trim, 'audit_trim 缺');
 assert.ok(byName.audit_capabilities, 'audit_capabilities 缺');
+assert.ok(byName.audit_retire, 'audit_retire 缺');
 
 // 每个工具都必须声明 output.schema 与 render（宿主硬要求）
-for (const n of ['audit_findings', 'audit_explain', 'audit_plan', 'audit_trim', 'audit_capabilities']) {
+for (const n of ['audit_findings', 'audit_explain', 'audit_plan', 'audit_trim', 'audit_capabilities', 'audit_retire']) {
   assert.ok(byName[n].output && byName[n].output.schema, n + ' 缺 output.schema');
   assert.equal(typeof byName[n].output.render, 'function', n + ' 缺 output.render');
 }

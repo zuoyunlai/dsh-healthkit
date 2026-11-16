@@ -58,6 +58,18 @@ export function renderReport(facts, findings, sc, opts) {
     opts.retired.forEach(function (f) { L('- `' + f.fp + '` — ' + (f.retired && f.retired.reason ? f.retired.reason : '无理由')); });
     L('');
   }
+  // §13.7 自审分离：本插件自身的状态单列一节，**不参与评分**。
+  // 体检器自己出问题（比如工具没注册全、数据目录读不到）不能影响被检对象的分数。
+  if (opts && opts.self && Object.keys(opts.self).length) {
+    var sl = opts.self;
+    L('## 三之四、本插件自身状态（不计入评分）');
+    L('');
+    L('- 版本：' + (sl.version || '?') + ' · rubric ' + sc.rubricVersion);
+    L('- 工具面：' + (sl.tools && sl.tools.length ? sl.tools.join('、') : '未注册'));
+    L('- 数据目录：' + (sl.dataDir || '未知') + ' · 账本 ' + (sl.historyRuns === null || sl.historyRuns === undefined ? '未知' : sl.historyRuns + ' 次') + ' · 已退役 ' + (sl.retiredCount || 0) + ' 条');
+    if (sl.notes && sl.notes.length) L('- 备注：' + sl.notes.join('；'));
+    L('');
+  }
   L('## 四、修复建议（L3-plan，不执行）');
   L('');
   var fixes = sorted.filter(function (f) { return f.fixHint; });
