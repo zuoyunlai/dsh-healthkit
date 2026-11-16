@@ -1,17 +1,17 @@
 {
-  "home": "C:\\Users\\Zuoyunlai\\.dsh",
+  "home": "C:\\Users\\u\\.dsh",
   "collectedAt": "2026-11-15T17:42:27.433Z",
   "yamlAvailable": true,
   "machines": [
     {
       "name": "aliyun-47",
-      "host": "47.107.230.73",
+      "host": "203.0.113.47",
       "useSshConfig": false,
-      "privateKeyPath": "F:\\Downloads\\_本地ssh.pem"
+      "privateKeyPath": "F:\\Downloads\\deploy.pem"
     },
     {
       "name": "tencent-14",
-      "host": "14.103.28.19",
+      "host": "203.0.113.14",
       "useSshConfig": true,
       "privateKeyPath": null
     }
@@ -19,7 +19,7 @@
   "profiles": [
     {
       "name": "desktop",
-      "dir": "C:\\Users\\Zuoyunlai\\.dsh\\profiles\\desktop",
+      "dir": "C:\\Users\\u\\.dsh\\profiles\\desktop",
       "deps": [
         "@changfenhuang/dsh-genui",
         "@goodandready/dsh-vision-bridge",
@@ -205,7 +205,7 @@
     },
     {
       "name": "web",
-      "dir": "C:\\Users\\Zuoyunlai\\.dsh\\profiles\\web",
+      "dir": "C:\\Users\\u\\.dsh\\profiles\\web",
       "deps": [
         "@deepseek-ai/schemastery",
         "@dshworks/dsh-solidworks",
@@ -1271,7 +1271,7 @@
     ]
   },
   "costTracker": {
-    "file": "C:\\Users\\Zuoyunlai\\.dsh\\.dshw-usage.json",
+    "file": "C:\\Users\\u\\.dsh\\.dshw-usage.json",
     "mtimeMs": 1793025119402.0789,
     "ageDays": 20
   },
@@ -1584,7 +1584,7 @@
   "agentPresets": [
     {
       "dir": "paper-reader",
-      "path": "C:\\Users\\Zuoyunlai\\.dsh\\.agent-presets\\paper-reader",
+      "path": "C:\\Users\\u\\.dsh\\.agent-presets\\paper-reader",
       "name": "论文伴读",
       "description": "考官式论文伴读：你先独立阅读，AI 只负责出题、校验和追问薄弱点，不灌输内容，只在你真正卡住时才讲解（每篇论文一份 .study.json 学习档案）。",
       "entryIds": [

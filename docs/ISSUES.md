@@ -3,7 +3,7 @@
 ## #1（已修，0.4.1）audit_report 缺省 out 落到 profile 目录，而非会话工作区
 
 - **现象**：不传 `out` 调 `audit_report`，报告出现在
-  `C:\Users\Zuoyunlai\.dsh\profiles\desktop\AUDIT-2026-11-16.md`，
+  `C:\Users\<user>\.dsh\profiles\desktop\AUDIT-2026-11-16.md`，
   而工具描述写的是「缺省写当前工作区」。
 - **根因**：实现是 `path.join(process.cwd(), 'AUDIT-' + d + '.md')`。宿主是 Electron 应用，
   `process.cwd()` 是 **profile 目录**（`~/.dsh/profiles/desktop`），不是会话工作区。
