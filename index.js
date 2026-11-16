@@ -107,6 +107,7 @@ const VERIFY_SCHEMA = {
     ok: { type: 'boolean' },
     hasPending: { type: 'boolean' },
     at: { type: 'string' },
+    bootAt: { type: 'string' },
     fixed: { type: 'number' },
     stillThere: { type: 'number' },
     muted: { type: 'number' },
@@ -819,9 +820,11 @@ export function buildTools(deps) {
       const ver = await import('./src/verify.mjs');
       const r = audit({ scenario: 'general' });
       const home = r.facts.home;
-      const last = ver.readLastVerify(home);
-      // 没有开机验回记录时，当场算一次（等价效果：用户现在就想核对）。
-      const v = last || ver.checkPending(r, { home });
+      // **每次都当场重算**——开机时那份（verify/last.json）只是历史快照，
+      // 拿它当答案会掩盖「刚退役了一条」这类变化（2026-11-16 实测踩到：
+      // 退役后再查仍显示退役前的结果，因为读的是开机时的旧记录）。
+      const v = ver.checkPending(r, { home });
+      const boot = ver.readLastVerify(home);
       const tl = ver.timeline(home, (args && args.limit) || 12);
       const L = [];
       if (!v || !v.hasPending) {
@@ -854,6 +857,7 @@ export function buildTools(deps) {
         ok: true,
         hasPending: !!(v && v.hasPending),
         at: (v && v.at) || '',
+        bootAt: (boot && boot.at) || '',
         fixed: (v && v.fixed || []).length,
         stillThere: (v && v.stillThere || []).length,
         muted: (v && v.muted || []).length,

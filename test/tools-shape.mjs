@@ -59,6 +59,21 @@ assert.equal(e3.found, false);
   assert.ok(f2.items.some((x) => x.fp === fp0), '撤销后它应重新出现并计分');
 }
 
+// 回归（2026-11-16 真机踩到）：audit_verify 必须**当场重算**，
+// 不能返回开机时写下的旧记录——否则「刚退役了一条」在验回里看不见，
+// 被静音的那条会被误报成「还在」。
+{
+  const f0 = await byName.audit_findings.execute({});
+  const fp0 = f0.items[0].fp;
+  const { writePending } = await import('../src/verify.mjs');
+  writePending({ score: { total: 9 }, findings: f0.items, retired: [] }, { home: process.env.DSH_HOME });
+  await byName.audit_retire.execute({ finding: fp0, reason: '回归测试：验证 muted 判定' });
+  const v = await byName.audit_verify.execute({});
+  assert.equal(v.muted, 1, '被退役的那条应显示为「被静音」，实得 muted=' + v.muted + ' / stillThere=' + v.stillThere);
+  assert.ok(v.stillThere >= 0, '其余目标仍在属正常');
+  await byName.audit_retire.execute({ finding: fp0, action: 'restore' });
+}
+
 const p = await byName.audit_plan.execute({});
 assert.ok(p.steps.length >= 2, '计划至少两步');
 assert.equal(typeof p.base, 'number');
