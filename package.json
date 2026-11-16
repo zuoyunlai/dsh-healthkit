@@ -1,14 +1,30 @@
 {
   "name": "dsh-auditkit",
   "version": "0.4.1",
-  "private": true,
   "type": "module",
   "license": "MIT",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/zuoyunlai/dsh-auditkit.git"
   },
-  "description": "DSH 体检：只读体检评分、可还原清理、分数趋势（host-agnostic engine + CLI；结论可核、清理可撤销）",
+  "description": "DSH 体检：给 DeepSeek Harness 做体检——只读评分、可还原清理、分数趋势",
+  "keywords": [
+    "dsh",
+    "deepseek-harness",
+    "dsh-plugin",
+    "cordis",
+    "audit",
+    "health-check",
+    "cli"
+  ],
+  "homepage": "https://github.com/zuoyunlai/dsh-auditkit#readme",
+  "bugs": {
+    "url": "https://github.com/zuoyunlai/dsh-auditkit/issues"
+  },
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org/",
+    "access": "public"
+  },
   "main": "./index.js",
   "exports": {
     ".": "./index.js",
@@ -26,7 +42,8 @@
     "config/*.json",
     "test/*.mjs",
     "fixtures/*.json",
-    "docs/*.md"
+    "docs/ISSUES.md",
+    "docs/NOTES-host-contract.md"
   ],
   "scripts": {
     "audit": "node ./bin/audit.mjs",
