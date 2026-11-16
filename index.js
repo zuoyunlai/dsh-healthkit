@@ -82,6 +82,17 @@ const CLEAN_SCHEMA = {
   required: ['action', 'ok', 'summary'],
 };
 
+const DIGEST_SCHEMA = {
+  type: 'object',
+  properties: {
+    changed: { type: 'boolean' },
+    headline: { type: 'string' },
+    reason: { type: 'string' },
+    summary: { type: 'string' },
+  },
+  required: ['changed', 'summary'],
+};
+
 const TREND_SCHEMA = {
   type: 'object',
   properties: {
@@ -327,7 +338,7 @@ export function buildTools(deps) {
       // 记账 + 快照：写的是插件自己的数据目录，不碰被检对象；record=false 可关（审计反哺 V09）。
       if (!args || args.record !== false) {
         const hist = await import('./src/history.mjs');
-        hist.append(r, { scenario: (args && args.scenario) || 'general' });
+        hist.append(r, { scenario: (args && args.scenario) || 'general', source: 'agent' });
         // 写运行快照：跨次差异归因的基线（audit_diff 用）。
         try {
           const snap = await import('./src/snapshot.mjs');
@@ -339,13 +350,11 @@ export function buildTools(deps) {
           ver.writePending(r, { home: r.facts.home });
         } catch (e) { /* 待验清单写失败不该让体检失败 */ }
       }
-      const by = {};
-      r.findings.forEach((f) => { by[f.severity] = (by[f.severity] || 0) + 1; });
-      const top = r.findings
-        .filter((f) => f.severity === 'P0' || f.severity === 'P1')
-        .slice(0, 8)
-        .map((f) => '- [' + f.severity + '] ' + f.ruleId + ' ' + (f.title || '') + (f.target ? ' @ ' + f.target : ''))
-        .join('\n');
+      const { renderFirstScreen, countBySeverity } = await import('./src/digest.mjs');
+      const by = countBySeverity(r.findings);
+      // 产品审计 P0：健康机器的首屏不该是「14 行 INFO + 3 条 P2」。
+      // 改成 1 句结论 + ≤3 条最值得动的 + 其余一句话收走（全量仍走 audit_findings）。
+      const first = renderFirstScreen(r, { limit: 3 });
       return {
         score: r.score.total,
         raw: r.score.raw,
@@ -355,7 +364,9 @@ export function buildTools(deps) {
         p2: by.P2 || 0,
         findings: r.findings.length,
         retired: r.retired.length,
-        summary: top || '（无 P0/P1）',
+        headline: first.headline,
+        topActions: first.topActions.length,
+        summary: first.lines.join('\n'),
         gains: (() => {
           const a = r.attribution;
           const out = [];
@@ -522,6 +533,35 @@ export function buildTools(deps) {
         p0: num(s.p0),
         sparkline: s.sparkline || '',
         summary: renderStats(s),
+      };
+    },
+  },
+  {
+    name: 'audit_digest',
+    description: '差异驱动的周报摘要：与上次相比变了什么（分数/新增/真修好/新退役）、上次说该修的现在怎样；没有变化时只说一句「无变化」而不是复述。只读，不记账',
+    parameters: {
+      type: 'object',
+      properties: {
+        scenario: { type: 'string', description: 'general|code|design|writing，缺省 general' },
+        limit: { type: 'number', description: '「最值得动」的条数，缺省 3，最大 5' },
+      },
+      additionalProperties: false,
+    },
+    output: {
+      schema: DIGEST_SCHEMA,
+      render(_args, v) { return text(v.summary); },
+    },
+    execute: async (args) => {
+      const { audit } = await import('./src/engine.mjs');
+      const { buildDigest } = await import('./src/weekly.mjs');
+      const r = audit({ scenario: (args && args.scenario) || 'general' });
+      const lim = Math.max(1, Math.min(5, Number((args && args.limit) || 3)));
+      const d = buildDigest(r, { limit: lim });
+      return {
+        changed: d.changed === true,
+        headline: d.headline || '',
+        reason: d.reason || '',
+        summary: d.lines.join('\n'),
       };
     },
   },

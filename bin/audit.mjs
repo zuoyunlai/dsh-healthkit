@@ -55,6 +55,9 @@ var USAGE = [
   '  dsh-healthkit --scenario <名>    general | code | design | writing',
   '  dsh-healthkit --out <路径>       指定报告落点',
   '  dsh-healthkit --json            只输出 JSON 摘要',
+  '  dsh-healthkit --verbose         首屏结论 + 全量发现清单',
+  '  dsh-healthkit --no-record       不记入账本（排查/试跑用）',
+  '  dsh-healthkit --source <s>      账本标记来源：human（缺省）/ agent / automation / ci',
   '  dsh-healthkit --why             只看「先修哪几条」',
   '  dsh-healthkit --links           看 link:/file: 依赖指向何处',
   '  dsh-healthkit --trend [--days N]  分数趋势',
@@ -381,7 +384,8 @@ try {
     console.log('retired: ' + target.fp + '  (' + target.title + ')');
     process.exit(0);
   }
-  historyAppend(result, { scenario: scenario });
+  // P1：CLI 记为 human；--source 可覆盖（automation / ci）；--no-record 完全不记账。
+  if (!has('no-record')) historyAppend(result, { scenario: scenario, source: arg('source', 'human') });
   // 写运行快照：跨次差异归因的基线
   try {
     var snapMod = await import('../src/snapshot.mjs');
@@ -389,6 +393,13 @@ try {
   } catch (e) { /* 快照写失败不该让体检失败 */ }
   var factsOut = arg('dump-facts', null);
   if (factsOut) { fs.mkdirSync(path.dirname(factsOut), { recursive: true }); fs.writeFileSync(factsOut, JSON.stringify(result.facts, null, 2), 'utf8'); }
+  if (has('digest')) {
+    var wk = await import('../src/weekly.mjs');
+    var dg = wk.buildDigest(result, { limit: 3 });
+    if (has('json')) console.log(JSON.stringify(dg, null, 2));
+    else console.log(dg.lines.join('\n'));
+    process.exit(0);
+  }
   if (arg('format', 'md') === 'json') {
     var jsonMod = await import('../src/report-json.mjs');
     var jsonRep = jsonMod.buildJsonReport(result, { version: result.self && result.self.version });
@@ -403,8 +414,18 @@ try {
   if (has('json')) process.stdout.write(JSON.stringify({ score: result.score, findings: result.findings, retired: result.retired.length }, null, 2) + '\n');
   else {
     if (bundleIndex) console.log('bundleIndex: ' + (bundleIndex.ok || 0) + '/' + (bundleIndex.requested || 0) + ' bundles, ' + Object.keys(bundleIndex.idToBundles || {}).length + ' ids');
+    // 产品审计 P0：默认首屏 = 结论 + ≤3 条最值得动；全量清单留在 --verbose 与报告文件里。
+    var digestMod = await import('../src/digest.mjs');
+    var first = digestMod.renderFirstScreen(result, { limit: 3 });
     console.log('score=' + result.score.total + '/10 (raw ' + result.score.raw + ', band ' + result.score.band + ', P0=' + result.score.p0Open + ', retired=' + result.retired.length + ')');
-    result.findings.forEach(function (f) { console.log('  [' + f.severity + ']' + (f.advisory ? '(建议)' : '') + ' ' + f.ruleId + ' ' + f.title); });
+    console.log('');
+    first.lines.forEach(function (l) { console.log(l); });
+    if (has('verbose')) {
+      console.log('');
+      console.log('全量发现：');
+      result.findings.forEach(function (f) { console.log('  [' + f.severity + ']' + (f.advisory ? '(建议)' : '') + ' ' + f.ruleId + ' ' + f.title); });
+    }
+    console.log('');
     console.log('report=' + out);
   }
 } catch (e) { console.error('audit failed: ' + e.message); process.exit(1); }

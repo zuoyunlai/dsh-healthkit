@@ -170,6 +170,9 @@ export function runRules(facts, allowlist) {
     var asset = facts.engineAssets.filter(function (a) { return a.top === d.name; })[0];
     out.push(F({ ruleId: 'R17', dimension: 'disk', severity: 'INFO',
       title: '大目录 ' + d.name + ' 约 ' + Math.round(d.bytes / 1048576) + 'MB（' + d.files + ' 文件' + (d.truncated ? '，已截断' : '') + '）',
+      // 产品审计 P3：以前这条只说「大」，不说「能不能动」，而面板的「可清理空间」只算安全档，
+      // 两个面对同一批目录给出两套数字（R17 报 845MB，clean 报 48MB），用户会困惑。
+      fixHint: '先跑 audit_clean preview 看它能回收多少：不在可清理分组里的（profiles / sessions / attachments / 运行时目录）是有意不提供清理的受保护面，需要人工判断而不是一键删。',
       evidence: [facts.home + '/' + d.name],
       measured: { mb: Math.round(d.bytes / 1048576), approx: !!d.truncated, oldestAgeDays: d.oldestAgeDays, dir: d.name,
                   verdict: asset ? 'ENGINE_ASSET_NO_RECLAIM' : (d.oldestAgeDays !== null && d.oldestAgeDays > 30 ? 'RECLAIM_CANDIDATE' : 'NO_DATA_OLD_ENOUGH') } }));

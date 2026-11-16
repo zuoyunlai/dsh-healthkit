@@ -1,5 +1,50 @@
 # CHANGELOG
 
+## 未发布 — 产品审计反哺批（P0–P4 落地 · 台账 docs/FIXLOG-PRODUCT-2026-11-17.md）
+
+> 产品审计的核心判断：它至今只证明了「作者能用它管住自己 23 小时发 28 版的混乱」；
+> 要变成「别人的体检工具」，缺的不是功能/分发/质量，而是首屏、来源、验回三件事。
+
+### P0 首屏结论化（健康机器不再「跑完啥也没说」）
+
+- 首屏从「14 行 INFO + 3 条 P2」改成：**1 句结论 → 最值得动的 ≤3 条 → 其余一句话收走**。
+- 新 `src/digest.mjs` 是这条口径的单一真源（`headlineOf` / `pickTopActions` / `renderFirstScreen`），
+  `audit_run` 的 summary、CLI 默认输出、面板 headline 全读它。
+- **不删任何 INFO**：它们是 `audit_diff` 的观测基线，只是换了表达。全量清单走 `--verbose` / `audit_findings`。
+
+### P1 账本记触发来源
+
+- `history` 记录新增 `source`（human / agent / automation / ci，可用 `DSH_HEALTHKIT_SOURCE` 覆盖）；
+  `stats()` 汇总 `sources` / `humanRuns`；面板 payload 带出。
+- 工具调用记 `agent`，CLI 记 `human`；新增 `--source <s>` 与 **`--no-record`**（试跑不污染账本）。
+  动机：实测 50 条记账全在一天、78% 与前次同值，而「谁在跑」从来没记——一次审计的 4 次只读探测
+  就能把账本凭空造出第二天。
+
+### P2 差异驱动周报 + 让验回有活干
+
+- 新工具 **`audit_digest`**（+ CLI `--digest`）：与上次快照比变化，**必带「上次说该修的现在怎样」**，
+  没有变化只说一句「没有变化」而不复述。
+- `writePending` 判据从「只收带修法的 P0/P1」改为「P0/P1 全收 + 最多 3 条带修法的 P2」——
+  原来健康机器（P0/P1 归零）待验清单恒空，**`audit_verify` 在健康机器上永远没有对象可验**。
+
+### P3 R17 与 clean 讲同一件事
+
+- R17 补 `fixHint`：先跑 `audit_clean preview`，并说明不在可清理分组里的是有意不清理的受保护面。
+- 面板 payload 新增 `clean.notCleanable`（≥50MB 且未被任何分组覆盖的顶层目录，带 `protected` 标记），
+  侧栏「可清理」卡副行变成「3 组 · 另 5 个大目录不在清理档」。
+- 覆盖判定按路径前缀（`cache/attachments` 可清理 ≠ `~/.dsh/attachments` 可清理）。
+
+### P4 README 首屏
+
+- 首屏 = 一句定位 + 一段真实输出 + 「它不做什么」+ 与 doctor / 插件管理器的分工；工具表下沉。
+- `docs/COMPLEMENTARY.md` 进 npm `files`（此前这份「和 doctor 有什么不同」的答案不在包里）。
+- 工具表与 `--init` 文案同步到 15 个工具（`tools-shape` 有断言盯文案与实现一致）。
+
+### 测试
+
+- 新增 `test/digest.mjs`（16 项断言）；`test/verify.mjs` 按新判据更新（P2 进清单、最多 3 条、
+  只有 P2 时也有目标）；`tools-shape` / `apply-inject` / `init` 文案同步到 15 个工具。
+
 ## 未发布 — 架构审计反哺批（P0×2 · P1×7 · P2×5 全部落地）
 
 > 依据 `docs/FIXLOG-2026-11-17.md`（逐条修前/修后实测台账）。

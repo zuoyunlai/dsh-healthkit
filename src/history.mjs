@@ -53,6 +53,10 @@ export function append(result, opts) {
     findings: (result.findings || []).length,
     retired: (result.retired || []).length,
     topKeys: topKeys(result.findings).slice(0, 6),
+    // 产品审计 P1：记下「谁在跑」。
+    // 没有这个字段时，agent 顺手跑几次就会被误当成「用户在关注」——
+    // 2026-11-17 一次产品审计的 4 次只读探测就把账本凭空造出了第二天。
+    source: String(o.source || process.env.DSH_HEALTHKIT_SOURCE || 'human').slice(0, 24),
   };
   try {
     const p = historyPath();
@@ -120,9 +124,16 @@ export function stats(opts) {
   const tail7 = vals.slice(-7);
   const avg = (a) => (a.length ? Math.round((a.reduce((x, y) => x + y, 0) / a.length) * 100) / 100 : null);
   const openP0 = latest ? latest.p0 : null;
+  // 触发来源分布：仪表盘/周报必须先分清「人看的」与「agent 顺手跑的」。
+  const sources = {};
+  all.forEach((r) => { const s = r.source || 'unknown'; sources[s] = (sources[s] || 0) + 1; });
+  const humanish = (sources.human || 0) + (sources.automation || 0);
   return {
     days,
     runs: all.length,
+    sources,
+    humanRuns: humanish,
+    effectiveRuns: humanish,
     daysTracked: win.length,
     latest: latest ? latest.total : null,
     latestDay: latest ? latest.day : null,

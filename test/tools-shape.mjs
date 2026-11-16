@@ -26,9 +26,10 @@ assert.ok(byName.audit_run, 'audit_run 缺');
 assert.ok(byName.audit_report, 'audit_report 缺');
 assert.ok(byName.audit_clean, 'audit_clean 缺');
 assert.ok(byName.audit_trend, 'audit_trend 缺');
+assert.ok(byName.audit_digest, 'audit_digest 缺');
 
 // 每个工具都必须声明 output.schema 与 render（宿主硬要求）
-for (const n of ['audit_run', 'audit_report', 'audit_clean', 'audit_trend', 'audit_findings', 'audit_explain', 'audit_plan', 'audit_trim', 'audit_capabilities', 'audit_retire', 'audit_diff', 'audit_verify', 'audit_check', 'audit_recommend']) {
+for (const n of ['audit_run', 'audit_report', 'audit_clean', 'audit_trend', 'audit_digest', 'audit_findings', 'audit_explain', 'audit_plan', 'audit_trim', 'audit_capabilities', 'audit_retire', 'audit_diff', 'audit_verify', 'audit_check', 'audit_recommend']) {
   assert.ok(byName[n].output && byName[n].output.schema, n + ' 缺 output.schema');
   assert.equal(typeof byName[n].output.render, 'function', n + ' 缺 output.render');
 }

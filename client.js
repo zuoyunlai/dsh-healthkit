@@ -544,7 +544,12 @@ window.__ModuleLoader__.load({
 
       // 5 张卡进 2 列会留一个空洞；改成 2×2，补上「可涨」（修完能到几分）。
       const grid = h('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 8 } },
-        metric(lang.cleanable, d.clean ? mb(d.clean.bytes) : '—', d.clean ? d.clean.groups.length + ' 组' : null),
+        metric(lang.cleanable, d.clean ? mb(d.clean.bytes) : '—',
+          d.clean
+            ? (d.clean.groups.length + ' 组' + (d.clean.notCleanable && d.clean.notCleanable.length
+              ? ' · 另 ' + d.clean.notCleanable.length + ' 个大目录不在清理档'
+              : ''))
+            : null),
         metric(lang.plugins,
           served == null ? '—' : fmt(served) + ' / ' + fmt(maxBundles),
           served == null ? null : (trimOver > 0 ? String(lang.over).replace('{a}', String(trimOver)) : '未超限'),

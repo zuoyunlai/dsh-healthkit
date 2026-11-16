@@ -8,10 +8,12 @@
 //   ② 侧边栏 iframe 不给脚本执行权 → 依赖 <script> 的面板在侧边栏里永远白屏。
 //   ③ 只给分数不给原因 → 面板没用。现在每条问题带维度、证据、测得值、修法，
 //      另给「修复顺序」与「优化建议」，折叠用原生 <details>（无脚本也能展开）。
+import path from 'node:path';
 import { audit } from './engine.mjs';
+import { headlineOf } from './digest.mjs';
 import { stats, load as loadHistory } from './history.mjs';
 import { analyze as trimAnalyze } from './trim.mjs';
-import { scan as cleanScan } from './clean.mjs';
+import { scan as cleanScan, PROTECTED_NAMES as CLEAN_PROTECTED } from './clean.mjs';
 import { buildMatrix } from './capability-map.mjs';
 import { readLastVerify, timeline as verifyTimeline } from './verify.mjs';
 
@@ -79,14 +81,6 @@ function clip(v, max) {
   } catch (e) { return ''; }
 }
 
-function headlineOf(by, score, count) {
-  if (by.P0 > 0) return '有 ' + by.P0 + ' 条 P0 压着总分封顶，先处理它们';
-  if (!count) return '没发现未解决的问题';
-  if (score < 6) return '问题较多，按下表顺序修见效最快';
-  if (score < 8) return '整体可用，还有几处该收的尾巴';
-  return '整体健康，剩下的是打磨项';
-}
-
 export function collectSummary() {
   const now = Date.now();
   if (cache.data && now - cache.at < CACHE_MS) return cache.data;
@@ -146,6 +140,28 @@ export function collectSummary() {
     const s = cleanScan({});
     clean = {
       bytes: s.totalBytes || 0,
+      // P3：把「大目录但没进可清理档」单独列出来，与 R17 的数字能对上。
+      // 只读信息，不进可执行分组——受保护面不提供一键清理。
+      notCleanable: (() => {
+        try {
+          const home = String(r.facts.home || '');
+          const skip = ['profiles', 'dsh-runtimes', 'node_modules', 'sessions', 'attachments', 'skills', 'data', 'storages', '.git'];
+          // 「是否已被某个可清理分组覆盖」按路径前缀判定：分组要操作的就是这个顶层目录
+          // 或它下面的东西，才算覆盖（cache/attachments 可清理 ≠ ~/.dsh/attachments 可清理）。
+          const coveredBy = (name) => {
+            const base = home + path.sep + name;
+            return (s.groups || []).some((g) => (g.entries || []).some((e) => {
+              const p = String(e.path || '');
+              return p === base || p.indexOf(base + path.sep) === 0;
+            }));
+          };
+          return (r.facts.disk || [])
+            .filter((d) => d.bytes >= 50 * 1048576 && !coveredBy(d.name))
+            .map((d) => ({ name: d.name, bytes: d.bytes, protected: CLEAN_PROTECTED.indexOf(d.name) !== -1 || skip.indexOf(d.name) !== -1 }))
+            .sort((a, b) => b.bytes - a.bytes)
+            .slice(0, 6);
+        } catch (e) { return []; }
+      })(),
       groups: (s.groups || []).map((g) => ({
         id: g.id,
         label: g.label || '',
@@ -203,6 +219,8 @@ export function collectSummary() {
     headline: headlineOf(by, r.score.total, r.findings.length),
     trend: {
       runs: h.runs,
+      sources: h.sources || {},
+      humanRuns: typeof h.humanRuns === 'number' ? h.humanRuns : null,
       daysTracked: h.daysTracked,
       latest: h.latest,
       delta: h.delta,

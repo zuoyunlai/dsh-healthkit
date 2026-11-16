@@ -41,14 +41,20 @@ function writeJson(p, obj) {
 }
 
 // 记下「待验目标」：本次体检里那些看起来值得修、且修法明确的发现。
-// 判据刻意保守：只记 P0/P1（用户大概率会动的），且必须有 fixHint（否则没法验）。
+//
+// 2026-11-17 产品审计 P2：原来只记 P0/P1，于是健康机器（P0/P1 归零）的待验清单恒为空，
+// `audit_verify` 这张真正的护城河**在健康机器上永远没有对象可验**——而绝大多数机器是健康的。
+// 现在补上「最多 3 条带修法的 P2」：低风险、可执行，正好是健康机器上唯一该动的东西。
 export function writePending(result, opts) {
   const o = opts || {};
   try {
     const home = o.home;
     if (!home) return null;
-    const targets = (result.findings || [])
-      .filter((f) => (f.severity === 'P0' || f.severity === 'P1') && f.fixHint && !f.advisory)
+    const findings = result.findings || [];
+    const actionable = findings.filter((f) => f.fixHint && !f.advisory);
+    const p0p1 = actionable.filter((f) => f.severity === 'P0' || f.severity === 'P1');
+    const p2 = actionable.filter((f) => f.severity === 'P2').slice(0, 3);
+    const targets = p0p1.concat(p2)
       .slice(0, 12)
       .map((f) => ({ fp: f.fp, ruleId: f.ruleId, severity: f.severity, title: f.title || '', fixHint: f.fixHint }));
     const rec = {
@@ -57,7 +63,7 @@ export function writePending(result, opts) {
       targets,
       note: targets.length
         ? '这些是上次体检认为该修的。重启后本插件会回来核对：修好了没、有没有把别的东西搞坏。'
-        : '上次体检没有待验目标（没有带修法的 P0/P1）。',
+        : '上次体检没有待验目标（没有带修法的 P0/P1/P2）。',
     };
     writeJson(pendingPath(home), rec);
     return rec;

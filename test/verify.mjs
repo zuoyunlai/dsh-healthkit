@@ -24,22 +24,29 @@ function mk(findings, retired, score) {
 }
 const F = (fp, sev, fix) => ({ fp, ruleId: fp.split('#')[0], severity: sev || 'P1', dimension: 'consistency', title: '问题 ' + fp, fixHint: fix || null, advisory: false });
 
-// 1) 待验清单只收带修法的 P0/P1
+// 1) 待验清单：带修法的 P0/P1 全收，另外最多补 3 条带修法的 P2
+//
+// 2026-11-17 产品审计 P2 改了判据：原来只收 P0/P1，于是健康机器（P0/P1 归零）的清单恒空，
+// audit_verify 在健康机器上永远没有对象可验——而那才是绝大多数机器。
 {
   const p = writePending(mk([F('R1#a', 'P1', '修法A'), F('R2#b', 'P0', '修法B'), F('R3#c', 'P2', '修法C'), F('R4#d', 'P1', null), F('R5#e', 'P1', '修法E')], [], 8), { home });
   assert.ok(p, '应写出待验清单');
-  // 只收 P0/P1 且带修法的：R1#a、R2#b、R5#e（R3#c 是 P2；R4#d 没修法）
-  assert.equal(p.targets.length, 3, '只应收 P0/P1 且带修法的，实得 ' + p.targets.length);
+  // P0/P1 带修法：R1#a、R2#b、R5#e（R4#d 没修法）；外加 P2 带修法：R3#c
+  assert.equal(p.targets.length, 4, '应为 P0/P1 三条 + P2 一条，实得 ' + p.targets.length);
   assert.ok(p.targets.every((x) => x.fixHint), '每条目标都该带修法');
+  assert.equal(p.targets.filter((x) => x.severity === 'P2').length, 1, 'P2 应只补 1 条（本例只有 1 条带修法）');
 }
 
 // 2) 验回三分：fixed / muted / stillThere
 {
-  // R1#a 修好了（不在 findings 里也没退役）；R2#b 被静音（在 retired 里）；R5#e 还在
+  // R1#a 修好了（不在 findings 里也没退役）；R2#b 被静音（在 retired 里）；R5#e 还在。
+  // R3#c（P2）也进了待验清单并且不在本次 findings 里 ⇒ 同样算真修好，
+  // 这是 2026-11-17 产品审计 P2 之后的新口径：P2 也能被验回。
   const v = checkPending(mk([F('R5#e', 'P1', '修法E')], [{ fp: 'R2#b', ruleId: 'R2', severity: 'P0', title: '被静音' }], 9), { home });
   assert.equal(v.hasPending, true);
-  assert.equal(v.fixed.length, 1, '真修好应是 1 条');
-  assert.equal(v.fixed[0].fp, 'R1#a');
+  assert.equal(v.fixed.length, 2, '真修好应是 2 条（R1#a + R3#c P2），实得 ' + v.fixed.length);
+  assert.ok(v.fixed.some((x) => x.fp === 'R1#a'), 'P1 修好要算进去');
+  assert.ok(v.fixed.some((x) => x.fp === 'R3#c'), 'P2 修好也要算进去');
   assert.equal(v.muted.length, 1, '被静音应是 1 条');
   assert.equal(v.muted[0].fp, 'R2#b');
   assert.equal(v.stillThere.length, 1, '还在应是 1 条');
@@ -49,7 +56,7 @@ const F = (fp, sev, fix) => ({ fp, ruleId: fp.split('#')[0], severity: sev || 'P
   // 验回结果落盘
   const last = readLastVerify(home);
   assert.ok(last, '验回结果应落盘');
-  assert.equal(last.fixed.length, 1);
+  assert.equal(last.fixed.length, 2);
 }
 
 // 3) 没有待验清单时明说，不假装有
@@ -74,4 +81,18 @@ const F = (fp, sev, fix) => ({ fp, ruleId: fp.split('#')[0], severity: sev || 'P
 }
 
 fs.rmSync(home, { recursive: true, force: true });
+// 1b) P2 最多补 3 条，不喧宾夺主
+{
+  const many = [];
+  for (let i = 0; i < 6; i++) many.push(F('R9#' + i, 'P2', '修法' + i));
+  const p2 = writePending(mk(many, [], 9), { home });
+  assert.equal(p2.targets.length, 3, 'P2 最多补 3 条，实得 ' + p2.targets.length);
+}
+
+// 1c) 健康机器（只有 P2）也要有活干
+{
+  const only = writePending(mk([F('R10#x', 'P2', '开通 allowlist')], [], 9.8), { home });
+  assert.equal(only.targets.length, 1, '只有 P2 时也应给出待验目标');
+}
+
 console.log('verify: 通过（待验清单筛选 · fixed/muted/stillThere 三分 · 时间线）');
