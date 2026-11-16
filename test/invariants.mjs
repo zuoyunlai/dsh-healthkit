@@ -35,6 +35,9 @@ ok('p0-requires-cap-reason', r.score.p0Open === 0 || !!r.score.capReason, 'P0=' 
 
 ok('advisory-separated', r.findings.length >= 0 && adv.length >= 0, 'advisory=' + adv.length);
 
+// 审计反哺 V10：报告必须有跨次对比段（无基线时也要注明「本次为基线」）。
+ok('report-has-crossrun', /跨次对比/.test(r.report), '');
+
 console.log('---');
 console.log('failed=' + fails.length + ' findings=' + r.findings.length + ' retired=' + r.retired.length);
 if (fails.length) process.exit(1);

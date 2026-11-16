@@ -39,6 +39,37 @@ const cases = [
     expectRule: 'R9',
     expectUnknown: true,
   },
+  // 审计反哺 V05：字段级缺失（不是整块采集源消失）——原来 3 个直接 TypeError。
+  {
+    name: 'profiles[0].depsNotBundled 缺失（字段级）',
+    mutate: (f) => { delete f.profiles[0].depsNotBundled; },
+    expectRule: null,
+    expectUnknown: false,
+  },
+  {
+    name: 'profiles[0].bakFiles 缺失（字段级）',
+    mutate: (f) => { delete f.profiles[0].bakFiles; },
+    expectRule: null,
+    expectUnknown: false,
+  },
+  {
+    name: 'profiles[0].bundles 缺失（字段级）',
+    mutate: (f) => { delete f.profiles[0].bundles; },
+    expectRule: null,
+    expectUnknown: false,
+  },
+  {
+    name: 'disk 整块缺失',
+    mutate: (f) => { delete f.disk; },
+    expectRule: null,
+    expectUnknown: false,
+  },
+  {
+    name: 'logs 整块缺失',
+    mutate: (f) => { delete f.logs; },
+    expectRule: null,
+    expectUnknown: false,
+  },
 ];
 
 let checked = 0;

@@ -92,7 +92,8 @@
         "dsh-ego-browser",
         "dsh-free-search",
         "dsh-ops",
-        "lunheng-article-pipeline"
+        "lunheng-article-pipeline",
+        "dsh-fake-nomanifest"
       ],
       "thirdPartyBundles": [
         "dsh-pet-plugin",
@@ -123,7 +124,8 @@
         "dsh-ego-browser",
         "dsh-free-search",
         "dsh-ops",
-        "lunheng-article-pipeline"
+        "lunheng-article-pipeline",
+        "dsh-fake-nomanifest"
       ],
       "bundlesMissingFromDeps": [],
       "depsNotBundled": [
@@ -213,6 +215,9 @@
           "spec": "link:./_local/dsh-rightbar-quicknav",
           "exists": true
         }
+      ],
+      "noManifestBundles": [
+        "dsh-fake-nomanifest"
       ]
     },
     {
@@ -266,7 +271,8 @@
           "spec": "file:./_local/dsh-theme-palette",
           "exists": true
         }
-      ]
+      ],
+      "noManifestBundles": []
     }
   ],
   "patchEntries": {
@@ -1290,9 +1296,7 @@
       "@changfenhuang/dsh-genui@0.16.0",
       "dsh-chronicle@2.5.2"
     ],
-    "web": [
-      "dsh-theme-palette@1.4.3 || 1.5.0 || 1.5.2 || 1.5.3 || 1.6.0"
-    ]
+    "web": null
   },
   "costTracker": {
     "file": "C:\\Users\\u\\.dsh\\.dshw-usage.json",
@@ -1476,14 +1480,23 @@
       "truncated": true
     }
   ],
-  "engineAssets": [],
+  "engineAssets": [
+    {
+      "top": "dsh-runtimes",
+      "path": "C:\\Users\\u\\.dsh\\dsh-runtimes\\bash-engine-prepared",
+      "hashSubdirs": 1,
+      "marker": "provenance.json"
+    }
+  ],
   "logs": {
     "reloadLines": 687,
     "standIn": [
       "2026-11-05T15:45:59.866Z startup rows answered with a stand-in module: dsh-better-sidebar; the next page comes up without those plugins",
       "2026-11-15T15:47:16.518Z startup rows answered with a stand-in module: @michengai/dsh-pua; the next page comes up without those plugins"
     ],
-    "notRunning": [],
+    "notRunning": [
+      "2026-11-16T09:00:00.000Z reload complete: newly not running=1 (dsh-example-plugin)"
+    ],
     "servedPlugins": 51
   },
   "vcs": true,

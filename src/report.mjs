@@ -58,6 +58,25 @@ export function renderReport(facts, findings, sc, opts) {
     opts.retired.forEach(function (f) { L('- `' + f.fp + '` — ' + (f.retired && f.retired.reason ? f.retired.reason : '无理由')); });
     L('');
   }
+  // 审计反哺 V10：跨次对比——区分「真修好」（消失且未被退役）与「被静音」（新退役）。
+  if (opts && opts.diff) {
+    var dd = opts.diff;
+    L('## 三之三之二、跨次对比：新增 ' + dd.added.length + ' / 真修好 ' + dd.fixed.length + ' / 新退役 ' + dd.newlyRetired.length +
+      '（上一次 ' + String(dd.prevAt || '?').replace('T', ' ').slice(0, 19) + '，分数 ' + dd.prevScore + ' → ' + dd.curScore +
+      (typeof dd.delta === 'number' ? '，' + (dd.delta > 0 ? '+' : '') + dd.delta : '') + '）');
+    L('');
+    if (dd.added.length) L('- **新增**：' + dd.added.map(function (f) { return f.ruleId + ' ' + String(f.title || '').slice(0, 40); }).join('；'));
+    if (dd.fixed.length) L('- **真修好**（消失且未被退役）：' + dd.fixed.map(function (f) { return f.ruleId + ' ' + String(f.title || '').slice(0, 40); }).join('；'));
+    if (dd.newlyRetired.length) L('- **新退役**（被静音，**不算修好**）：' + dd.newlyRetired.map(function (f) { return f.fp; }).join('、'));
+    if (dd.severityChanged && dd.severityChanged.length) L('- 严重度变化：' + dd.severityChanged.map(function (f) { return f.fp + ' ' + f.from + '→' + f.to; }).join('；'));
+    if (!dd.added.length && !dd.fixed.length && !dd.newlyRetired.length) L('- 与上一次一致（持续存在 ' + dd.kept + ' 条）。');
+    L('');
+  } else {
+    L('## 三之三之二、跨次对比');
+    L('');
+    L('- 没有可对比的上一次快照：**本次为基线**，下次体检起可对比。');
+    L('');
+  }
   // §13.7 自审分离：本插件自身的状态单列一节，**不参与评分**。
   // 体检器自己出问题（比如工具没注册全、数据目录读不到）不能影响被检对象的分数。
   if (opts && opts.self && Object.keys(opts.self).length) {

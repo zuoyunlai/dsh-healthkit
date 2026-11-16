@@ -51,3 +51,20 @@ cat $H/dsh-auditkit/plugin-status.json          # 看 registered / failures
 
 一度考虑过「DSH 管家」，否掉不是不好听，而是它默认了「我替你打理」—— 这套东西刻意不接管：
 包操作不代跑、优化建议不计分、清理必须能还原。名不副实，用户第三次使用就发现了。
+
+## 五、peer 走廊依赖宿主的宽松比较（2026-11-16 审计反哺 V02）
+
+**前提必须写下来**：本插件在真机（0.2.2-rc.3）上正常工作，依赖的是宿主比较 peer 时
+**包含预发布**（includePrerelease 式）的宽松语义。严格 semver 下，任何
+`>=0.2.x-0` 形态的下界都会排除其他三元组的预发布版本——实测矩阵见
+`docs/REVIEW-2026-11-16.md` §3 V02。
+
+当前声明（对齐 dsh-chronicle 惯例）：
+
+- `peerDependencies['@deepseek-ai/dsh'] = '>=0.2.2-0 <0.3.0'`（宿主本体）
+- `peerDependencies['@deepseek-ai/dsh-client-ui-sidebar-right'] = '>=0.1.5-0 <0.3.0-0'`
+  （覆盖其 latest=0.1.5-alpha.1 与 next=0.2.2-rc.3 两条发布线）
+- `dsh.compatibility.dsh` 与宿主 peer 同步为 `>=0.2.2-0 <0.3.0`
+
+**如果将来宿主收紧比较**（strict semver），这里会第一批失效——症状是插件被静默
+disabled（plugin list 有、工具面没有）。届时按宿主当时的精确版本改下界三元组。

@@ -4,7 +4,9 @@ import { readJson } from './util.mjs';
 
 function fpOf(o) {
   var m = o.measured || {};
-  var tail = m.tag || m.dir || (m.packages && m.packages[0]) || (m.stale && m.stale[0] && m.stale[0].entry) || (m.dead && m.dead[0]) || m.profile || '';
+  // 审计反哺 V03：退役只该静音它自己。多实例规则（R13 跨 profile、R17 跨目录、R22 跨 profile）
+  // 必须在 measured 里带标识（profile/dir/dep），否则 fp 退化成裸规则号，退役一条会静音一串。
+  var tail = m.tag || m.dir || (m.packages && m.packages[0]) || (m.stale && m.stale[0] && m.stale[0].entry) || (m.dead && m.dead[0]) || (m.broken && m.broken[0] && m.broken[0].dep) || m.profile || '';
   return o.ruleId + (tail ? '#' + String(tail).slice(0, 60) : '');
 }
 
@@ -22,6 +24,22 @@ function installedVersion(home, profileDir, name) {
 export function runRules(facts, allowlist) {
   var out = [];
   var cfg = allowlist || {};
+  // 审计反哺 V05：降级不许崩（§16.3「删采集源出 UNKNOWN 而非崩」）。
+  // collect 是这些字段的唯一供应商，但宿主升级/文件缺失可能让个别字段缺席——
+  // 规则层入口对关键字段做默认化，缺了按「没有」处理，不抛 TypeError。
+  (facts.profiles || []).forEach(function (p) {
+    if (!Array.isArray(p.deps)) p.deps = [];
+    if (!Array.isArray(p.bundles)) p.bundles = [];
+    if (!Array.isArray(p.thirdPartyBundles)) p.thirdPartyBundles = [];
+    if (!Array.isArray(p.depsNotBundled)) p.depsNotBundled = [];
+    if (!Array.isArray(p.bakFiles)) p.bakFiles = [];
+    if (!Array.isArray(p.localDeps)) p.localDeps = [];
+    if (!p.installed || typeof p.installed !== 'object') p.installed = {};
+    if (!p.depSpecs || typeof p.depSpecs !== 'object') p.depSpecs = {};
+  });
+  if (!facts.logs || typeof facts.logs !== 'object') facts.logs = {};
+  if (!Array.isArray(facts.disk)) facts.disk = [];
+  if (!Array.isArray(facts.engineAssets)) facts.engineAssets = [];
   var allow = cfg.depsNotBundled || {};
 
   for (var i = 0; i < facts.profiles.length; i++) {
@@ -49,7 +67,17 @@ export function runRules(facts, allowlist) {
         evidence: [p.dir + '/cordis.patch.yml'], measured: { suspicious: suspicious }, confidence: facts.bundleIndex ? 'MEASURED' : 'MEDIUM',
         fixHint: '先用 --probe-all 确认该 id 是否存在于组合树，再删除条目（不要凭猜删）' }));
     } else if (entries && entries.error) {
-      out.push(F({ ruleId: 'R2c', dimension: 'consistency', severity: 'P0', title: 'patch YAML 解析失败：' + entries.error, evidence: [p.dir + '/cordis.patch.yml'] }));
+      // 审计反哺 V01（docs/REVIEW-2026-11-16.md）：
+      // 「体检器取不到 YAML 解析器」是体检器自己的能力缺口，不是用户配置坏了。
+      // 报 P0 会触发总分封顶（≥1 条 P0 ⇒ ≤5.0），等于让用户替体检器背锅 → 降 P2/UNKNOWN。
+      // 只有「解析器在、文件语法错」才是真 P0。
+      var yamlUnavailable = entries.error === 'YAML_UNAVAILABLE';
+      out.push(F({ ruleId: 'R2c', dimension: 'consistency',
+        severity: yamlUnavailable ? 'P2' : 'P0',
+        title: yamlUnavailable ? '无法读取 patch（体检器缺 YAML 解析器，不代表配置有问题）' : 'patch YAML 解析失败：' + entries.error,
+        evidence: [p.dir + '/cordis.patch.yml'],
+        confidence: yamlUnavailable ? 'UNKNOWN' : 'MEASURED',
+        fixHint: yamlUnavailable ? '这是体检器的取证缺口：给 profile 的依赖里补上 yaml（或用 --probe-all 走宿主通道），补上后此条自动消失' : null }));
     }
 
     var excl = facts.exclusions[p.name];
@@ -151,7 +179,7 @@ export function runRules(facts, allowlist) {
     out.push(F({ ruleId: 'R17', dimension: 'disk', severity: 'INFO',
       title: '大目录 ' + d.name + ' 约 ' + Math.round(d.bytes / 1048576) + 'MB（' + d.files + ' 文件' + (d.truncated ? '，已截断' : '') + '）',
       evidence: [facts.home + '/' + d.name],
-      measured: { mb: Math.round(d.bytes / 1048576), approx: !!d.truncated, oldestAgeDays: d.oldestAgeDays,
+      measured: { mb: Math.round(d.bytes / 1048576), approx: !!d.truncated, oldestAgeDays: d.oldestAgeDays, dir: d.name,
                   verdict: asset ? 'ENGINE_ASSET_NO_RECLAIM' : (d.oldestAgeDays !== null && d.oldestAgeDays > 30 ? 'RECLAIM_CANDIDATE' : 'NO_DATA_OLD_ENOUGH') } }));
   });
   facts.engineAssets.forEach(function (a) {
@@ -257,7 +285,7 @@ export function runRules(facts, allowlist) {
         out.push(F({ ruleId: 'R13', dimension: 'context', severity: 'P1',
           title: '压缩策略覆盖率 ' + ratio + '%（' + covered + '/' + models.length + '），' + p.name + (defKey ? (' 默认模型 ' + defKey + (pol.indexOf(defKey) === -1 ? ' 无策略' : ' 已覆盖')) : ' 未声明默认模型'),
           evidence: [p.dir + '/cordis.patch.yml'],
-          measured: { coveragePct: ratio, policies: pol.length, models: models.length, defaultModel: defKey, defaultCovered: defKey ? pol.indexOf(defKey) !== -1 : null },
+          measured: { coveragePct: ratio, policies: pol.length, models: models.length, defaultModel: defKey, defaultCovered: defKey ? pol.indexOf(defKey) !== -1 : null, profile: p.name },
           fixHint: 'L2: 给默认模型补一条 modelPolicy（headroom 参考现有机型的 8192/16384 档）' }));
       }
     }
@@ -405,18 +433,14 @@ export function runRules(facts, allowlist) {
   }
 
   // ---- R23 bundle 必须声明 dsh.bundle，否则宿主静默跳过该层 ----
+  // 审计反哺 V07：判据在采集层（collect 的 noManifestBundles），规则层只读事实——
+  // 原来规则层直接 readJson 文件系统，夹具永远盖不到这条 P0 规则（判别逻辑零测试）。
   facts.profiles.forEach(function (p) {
-    var nativeBundles = p.bundles.filter(function (b) { return b.indexOf('@deepseek-ai/') !== 0; });
-    var noManifest = [];
-    nativeBundles.forEach(function (b) {
-      var pj = readJson(path.join(p.dir, 'node_modules', b, 'package.json'), null);
-      if (!pj) return;
-      if (!pj.dsh || !pj.dsh.bundle) noManifest.push(b);
-    });
-    if (noManifest.length) {
+    if (!Array.isArray(p.noManifestBundles)) return;   // 旧形状兜底：取不到判据不报（宁可漏报不误报）
+    if (p.noManifestBundles.length) {
       out.push(F({ ruleId: 'R23', dimension: 'reliability', severity: 'P0',
-        title: 'bundle 未声明 dsh.bundle，宿主会静默跳过 ' + noManifest.length + ' 个（' + p.name + '）',
-        evidence: [p.dir + '/package.json'], measured: { bundles: noManifest },
+        title: 'bundle 未声明 dsh.bundle，宿主会静默跳过 ' + p.noManifestBundles.length + ' 个（' + p.name + '）',
+        evidence: [p.dir + '/package.json'], measured: { bundles: p.noManifestBundles, profile: p.name },
         fixHint: '在包 package.json 补 dsh.bundle.patch；否则启动日志里只有一行 skipping profile bundle' }));
     }
   });

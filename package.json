@@ -1,6 +1,6 @@
 {
   "name": "dsh-healthkit",
-  "version": "0.8.6",
+  "version": "0.9.0",
   "type": "module",
   "license": "MIT",
   "repository": {
@@ -81,7 +81,7 @@
       "no-webhook-auto-session": true
     },
     "compatibility": {
-      "dsh": ">=0.2.1-alpha.2 <0.3.0",
+      "dsh": ">=0.2.2-0 <0.3.0",
       "profiles": [
         "desktop",
         "web"
@@ -93,10 +93,14 @@
     }
   },
   "peerDependencies": {
-    "@deepseek-ai/dsh-client-ui-sidebar-right": "^0.2.1-rc.1",
+    "@deepseek-ai/dsh": ">=0.2.2-0 <0.3.0",
+    "@deepseek-ai/dsh-client-ui-sidebar-right": ">=0.1.5-0 <0.3.0-0",
     "react": ">=18.2.0"
   },
   "peerDependenciesMeta": {
+    "@deepseek-ai/dsh": {
+      "optional": true
+    },
     "@deepseek-ai/dsh-client-ui-sidebar-right": {
       "optional": true
     },

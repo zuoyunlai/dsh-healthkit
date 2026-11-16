@@ -1,0 +1,427 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
+<style>
+:root{--dsw-alias-label-primary:#1f2328;--dsw-alias-label-secondary:#6b7280;--dsw-alias-border:rgba(128,128,128,.28);--dsw-alias-bg-layer-2:#f7f8fa;--dsw-alias-brand-primary:#2563eb;}
+*{box-sizing:border-box}
+body{margin:0;background:#fff;font:14px/1.5 -apple-system,"Segoe UI",system-ui,sans-serif}
+.hk{width:380px;padding:12px 14px 16px;color:var(--dsw-alias-label-primary, #1f2328);font-family:-apple-system,"Segoe UI",system-ui,sans-serif;font-size:12px;line-height:1.5}
+
+/* 顶栏 */
+.hk-head{display:flex;align-items:center;gap:8px;height:28px}
+.hk-head__t{font-size:13px;font-weight:700;letter-spacing:.01em}
+.hk-head__sp{flex:1}
+.hk-btn{display:inline-flex;align-items:center;gap:5px;height:26px;padding:0 9px;border-radius:7px;border:1px solid var(--dsw-alias-border, rgba(128,128,128,.28));background:var(--dsw-alias-bg-layer-2, transparent);color:var(--dsw-alias-label-secondary, #6b7280);font-size:11.5px;cursor:pointer;font-family:inherit}
+.hk-btn:hover{color:var(--dsw-alias-label-primary, #1f2328);border-color:color-mix(in srgb,var(--dsw-alias-brand-primary, #2563eb) 45%,var(--dsw-alias-border, rgba(128,128,128,.28)))}
+.hk-btn:focus-visible,summary:focus-visible{outline:2px solid var(--dsw-alias-brand-primary, #2563eb);outline-offset:2px}
+
+/* 序号/标题层 */
+.hk-verdict{font-size:12.5px;line-height:1.45;color:var(--dsw-alias-label-primary, #1f2328);margin:8px 0 10px}
+.hk-verdict span{color:var(--dsw-alias-label-secondary, #6b7280);font-size:11px}
+
+/* 英雄卡 */
+.hk-hero{border:1px solid var(--dsw-alias-border, rgba(128,128,128,.28));border-radius:12px;background:var(--dsw-alias-bg-layer-2, transparent);padding:12px 13px 11px}
+.hk-hero__top{display:flex;align-items:center;justify-content:space-between}
+.hk-lab{font-size:10.5px;font-weight:600;color:var(--dsw-alias-label-secondary, #6b7280);letter-spacing:.06em}
+.hk-band{font-size:10.5px;font-weight:700;padding:2px 7px;border-radius:999px;color:#15803d;background:color-mix(in srgb,#15803d 13%,transparent)}
+.hk-hero__num{display:flex;align-items:baseline;gap:7px;margin-top:1px}
+.hk-score{font-size:31px;font-weight:700;line-height:1.05;letter-spacing:-.02em;font-variant-numeric:tabular-nums;color:#15803d}
+.hk-score small{font-size:12px;font-weight:600;color:var(--dsw-alias-label-secondary, #6b7280);letter-spacing:0}
+.hk-sev{display:flex;gap:5px;margin-top:9px;flex-wrap:wrap}
+.hk-chip{display:inline-flex;align-items:center;gap:4px;height:20px;padding:0 7px 0 6px;border-radius:6px;font-size:10.5px;font-weight:600;color:var(--dsw-alias-label-primary, #1f2328);background:color-mix(in srgb,var(--h) 11%,transparent);border:1px solid color-mix(in srgb,var(--h) 30%,transparent);font-variant-numeric:tabular-nums}
+.hk-chip i{width:2px;height:9px;border-radius:1px;background:var(--h);display:block}
+.hk-chip b{margin-left:2px;font-weight:700;color:var(--h)}
+.hk-chip--sm{height:19px;font-size:10px;padding:0 6px 0 5px}
+.hk-hero__sep{height:1px;background:var(--dsw-alias-border, rgba(128,128,128,.28));margin:11px 0 9px}
+.hk-hero__note{font-size:11px;color:var(--dsw-alias-label-secondary, #6b7280);display:flex;justify-content:space-between;gap:8px}
+.hk-hero__note em{font-style:normal;color:var(--dsw-alias-label-primary, #1f2328);font-weight:600}
+
+/* 指标 2×2 */
+.hk-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}
+.hk-card{border:1px solid var(--dsw-alias-border, rgba(128,128,128,.28));border-radius:10px;background:var(--dsw-alias-bg-layer-2, transparent);padding:9px 10px;min-width:0}
+.hk-card__l{font-size:10.5px;color:var(--dsw-alias-label-secondary, #6b7280);font-weight:600;letter-spacing:.02em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hk-card__v{font-size:16px;font-weight:700;line-height:1.2;margin-top:3px;font-variant-numeric:tabular-nums;letter-spacing:-.01em}
+.hk-card__s{font-size:10.5px;color:var(--dsw-alias-label-secondary, #6b7280);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hk-card--warn{border-color:color-mix(in srgb,#dc2626 34%,var(--dsw-alias-border, rgba(128,128,128,.28)))}
+.hk-card--warn .hk-card__v{color:#dc2626}
+.hk-meter{height:3px;border-radius:2px;background:color-mix(in srgb,var(--dsw-alias-label-secondary, #6b7280) 22%,transparent);margin-top:6px;overflow:hidden}
+.hk-meter i{display:block;height:100%;width:100%;border-radius:2px;background:#dc2626}
+
+/* 趋势 */
+.hk-trend{margin-top:8px;border:1px solid var(--dsw-alias-border, rgba(128,128,128,.28));border-radius:10px;background:var(--dsw-alias-bg-layer-2, transparent);padding:9px 10px 7px}
+.hk-trend__top{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:2px}
+.hk-chart{position:relative;margin:2px 0 0}
+.hk-chart svg{display:block;width:100%;height:46px}
+.hk-axis{position:absolute;inset:0;pointer-events:none;font-size:9px;color:var(--dsw-alias-label-secondary, #6b7280);font-variant-numeric:tabular-nums}
+.hk-axis span{position:absolute;left:0;background:linear-gradient(90deg,#fff 60%,transparent);padding-right:4px}
+.hk-trend__foot{display:flex;justify-content:space-between;font-size:10.5px;color:var(--dsw-alias-label-secondary, #6b7280);margin-top:5px;font-variant-numeric:tabular-nums}
+
+/* 分段标题 */
+.hk-sec{display:flex;align-items:center;gap:7px;margin:18px 0 8px;padding-top:12px;border-top:1px solid var(--dsw-alias-border, rgba(128,128,128,.28))}
+.hk-sec__t{font-size:11.5px;font-weight:700;letter-spacing:.03em}
+.hk-sec__n{font-size:10.5px;font-weight:600;color:var(--dsw-alias-label-secondary, #6b7280);font-variant-numeric:tabular-nums}
+.hk-sec__sp{flex:1}
+
+/* 行 */
+.hk-row{border:1px solid var(--dsw-alias-border, rgba(128,128,128,.28));border-radius:10px;background:var(--dsw-alias-bg-layer-2, transparent);margin-bottom:7px;padding:0}
+.hk-row>summary{display:flex;align-items:flex-start;gap:8px;padding:8px 9px 8px 0;cursor:pointer;list-style:none}
+.hk-row>summary::-webkit-details-marker{display:none}
+.hk-bar{width:2px;border-radius:2px;background:var(--h);align-self:stretch;margin-left:-1px;flex:none;opacity:.85}
+.hk-row__main{flex:1;min-width:0;font-size:12.5px;line-height:1.42}
+.hk-row__main b{font-weight:700;color:var(--dsw-alias-label-secondary, #6b7280);font-size:11px;font-family:ui-monospace,Consolas,monospace;margin-right:2px}
+.hk-row__title{color:var(--dsw-alias-label-primary, #1f2328)}
+.hk-row__meta{display:block;font-size:10.5px;color:var(--dsw-alias-label-secondary, #6b7280);margin-top:1px}
+.hk-chev{flex:none;color:var(--dsw-alias-label-secondary, #6b7280);margin-top:3px;transition:transform .12s ease}
+.hk-row[open] .hk-chev{transform:rotate(90deg)}
+.hk-row[open]>summary{padding-bottom:0}
+.hk-row__body{padding:0 10px 10px 11px}
+.hk-row__body::before{content:"";display:block;height:1px;background:var(--dsw-alias-border, rgba(128,128,128,.28));margin:8px 0}
+.hk-kv{font-size:11.5px;line-height:1.5;color:var(--dsw-alias-label-primary, #1f2328);margin:5px 0;word-break:break-word}
+.hk-kv em{display:block;font-style:normal;font-size:10px;font-weight:600;color:var(--dsw-alias-label-secondary, #6b7280);letter-spacing:.04em;margin-bottom:1px}
+.hk-kv code{font-family:ui-monospace,Consolas,monospace;font-size:10.5px;color:var(--dsw-alias-label-secondary, #6b7280);white-space:pre-wrap;word-break:break-all;display:block}
+.hk-fp{font-family:ui-monospace,Consolas,monospace;font-size:9.5px;color:var(--dsw-alias-label-secondary, #6b7280);opacity:.75;margin-top:7px}
+
+/* INFO 折叠组 */
+.hk-group{border:1px dashed var(--dsw-alias-border, rgba(128,128,128,.28));border-radius:10px;padding:0 9px;background:transparent}
+.hk-group>summary{display:flex;align-items:center;gap:7px;padding:8px 0;cursor:pointer;list-style:none;font-size:11.5px;color:var(--dsw-alias-label-secondary, #6b7280)}
+.hk-group>summary::-webkit-details-marker{display:none}
+.hk-group>summary b{color:var(--dsw-alias-label-primary, #1f2328);font-variant-numeric:tabular-nums}
+.hk-group>summary svg{transition:transform .12s ease}
+.hk-group[open]>summary svg{transform:rotate(90deg)}
+.hk-row--compact{border:none;border-top:1px solid var(--dsw-alias-border, rgba(128,128,128,.28));border-radius:0;background:transparent;margin:0;padding:0}
+.hk-row--compact>summary{padding:6px 0 6px 0}
+.hk-row--compact .hk-row__main{font-size:11.5px}
+.hk-row--compact .hk-bar{opacity:.5}
+
+/* 步骤 */
+.hk-steps{list-style:none;margin:0;padding:0}
+.hk-step{position:relative;padding:0 0 12px 26px;font-size:11.5px}
+.hk-step:last-child{padding-bottom:0}
+.hk-step::before{content:"";position:absolute;left:8px;top:16px;bottom:0;width:1px;background:var(--dsw-alias-border, rgba(128,128,128,.28))}
+.hk-step:last-child::before{display:none}
+.hk-num{position:absolute;left:0;top:1px;width:17px;height:17px;border-radius:50%;background:color-mix(in srgb,var(--dsw-alias-brand-primary, #2563eb) 12%,transparent);color:var(--dsw-alias-brand-primary, #2563eb);font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;font-variant-numeric:tabular-nums}
+.hk-step--done .hk-num{background:color-mix(in srgb,#16a34a 14%,transparent);color:#15803d}
+.hk-step__t{font-size:12px;font-weight:600;color:var(--dsw-alias-label-primary, #1f2328)}
+.hk-step__d{font-size:11px;color:var(--dsw-alias-label-secondary, #6b7280);margin-top:1px}
+.hk-plan{margin-top:6px}
+.hk-plan__row{display:flex;gap:7px;align-items:baseline;padding:3px 0}
+.hk-plan__txt{font-size:11.5px;color:var(--dsw-alias-label-primary, #1f2328);line-height:1.45;min-width:0}
+.hk-plan__txt b{font-family:ui-monospace,Consolas,monospace;font-size:10.5px;color:var(--dsw-alias-label-secondary, #6b7280);margin-right:2px;font-weight:700}
+.hk-delta{flex:none;font-size:10px;font-weight:700;color:#15803d;background:color-mix(in srgb,#16a34a 13%,transparent);border-radius:5px;padding:1px 5px;font-variant-numeric:tabular-nums;min-width:34px;text-align:center}
+
+/* 建议 */
+.hk-adv{list-style:none;margin:0;padding:0}
+.hk-adv li{display:flex;gap:8px;padding:7px 0;font-size:11.5px;line-height:1.5;border-top:1px solid var(--dsw-alias-border, rgba(128,128,128,.28))}
+.hk-adv li:first-child{border-top:none;padding-top:0}
+.hk-adv li em{font-style:normal;flex:none;width:14px;color:var(--dsw-alias-label-secondary, #6b7280);font-weight:700;font-size:10px;margin-top:2px}
+.hk-adv li.warn em{color:#dc2626}
+
+/* 能力域 */
+.hk-caps{margin-top:2px}
+.hk-caps__row{display:flex;gap:7px;align-items:baseline;padding:6px 0;border-top:1px solid var(--dsw-alias-border, rgba(128,128,128,.28));font-size:11.5px;line-height:1.5}
+.hk-caps__row:first-child{border-top:none}
+.hk-caps__l{flex:none;width:74px;font-weight:600;color:var(--dsw-alias-label-primary, #1f2328)}
+.hk-caps__d{flex:1;min-width:0;color:var(--dsw-alias-label-secondary, #6b7280)}
+.hk-pill{flex:none;font-size:9.5px;font-weight:700;padding:1px 5px;border-radius:4px;margin-top:1px}
+
+.hk-foot{margin-top:14px;padding-top:10px;border-top:1px solid var(--dsw-alias-border, rgba(128,128,128,.28));font-size:10px;color:var(--dsw-alias-label-secondary, #6b7280);display:flex;justify-content:space-between}
+</style></head>
+<body><div class="hk">
+  <div class="hk-head">
+    <span style="width:18px;height:18px;border-radius:4px;background:#6EAB3B;flex:none"></span>
+    <span class="hk-head__t">体检</span>
+    <span class="hk-head__sp"></span>
+    <button class="hk-btn" type="button">
+      <svg width="11" height="11" viewBox="0 0 16 16" aria-hidden="true"><path d="M13 8a5 5 0 1 1-1.5-3.6M13 2v3h-3" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      刷新</button>
+  </div>
+
+  <div class="hk-verdict">整体健康，剩下的是打磨项<span> · 13:44 更新</span></div>
+
+  <div class="hk-hero">
+    <div class="hk-hero__top"><span class="hk-lab">总分</span><span class="hk-band">良好</span></div>
+    <div class="hk-hero__num">
+      <span class="hk-score">9.78<small>/10</small></span>
+      <span style="font-size:11px;color:var(--dsw-alias-label-secondary, #6b7280)">首日基线</span>
+    </div>
+    <div class="hk-sev"><span class="hk-chip" style="--h:#dc2626;opacity:.45"><i></i>P0<b>0</b></span><span class="hk-chip" style="--h:#d97706;opacity:.45"><i></i>P1<b>0</b></span><span class="hk-chip" style="--h:var(--dsw-alias-brand-primary, #2563eb);"><i></i>P2<b>3</b></span><span class="hk-chip" style="--h:#6b7280;"><i></i>INFO<b>14</b></span></div>
+    <div class="hk-hero__sep"></div>
+    <div class="hk-hero__note"><span>未解决 <em>17</em> · 已退役 <em>3</em></span><span>42 次记账</span></div>
+  </div>
+
+  <div class="hk-grid">
+    <div class="hk-card"><div class="hk-card__l">可清理</div><div class="hk-card__v">47.6 MB</div><div class="hk-card__s">2 组 · 先预览</div></div>
+    <div class="hk-card hk-card--warn"><div class="hk-card__l">插件 / 上限</div><div class="hk-card__v">56 / 43</div><div class="hk-card__s">超 13 个</div><div class="hk-meter"><i></i></div></div>
+    <div class="hk-card"><div class="hk-card__l">最新分</div><div class="hk-card__v">9.78</div><div class="hk-card__s">1 天 · 42 次</div></div>
+    <div class="hk-card"><div class="hk-card__l">可涨</div><div class="hk-card__v">+0.22</div><div class="hk-card__s">全修完 10 / 10</div></div>
+  </div>
+
+  <div class="hk-trend">
+    <div class="hk-trend__top"><span class="hk-lab">分数趋势</span><span style="font-size:10px;color:var(--dsw-alias-label-secondary, #6b7280)">近 20 次 · 轴固定 0–10</span></div>
+    <div class="hk-chart">
+      <svg viewBox="0 0 100 31" preserveAspectRatio="none" role="img" aria-label="分数趋势，最新 9.78 分" style="color:var(--dsw-alias-label-secondary, #6b7280)">
+        <line x1="3.5" y1="3.5" x2="96.5" y2="3.5" stroke="currentColor" stroke-opacity=".22" stroke-width=".4" vector-effect="non-scaling-stroke"/>
+        <line x1="3.5" y1="15.5" x2="96.5" y2="15.5" stroke="currentColor" stroke-opacity=".22" stroke-width=".4" stroke-dasharray="2 2" vector-effect="non-scaling-stroke"/>
+        <polygon points="3.5,27.5 3.50,7.44 8.39,7.44 13.29,7.44 18.18,7.44 23.08,7.44 27.97,15.50 32.87,4.94 37.76,4.46 42.66,4.46 47.55,4.46 52.45,4.46 57.34,4.46 62.24,4.46 67.13,4.46 72.03,4.03 76.92,4.03 81.82,4.03 86.71,4.03 91.61,4.03 96.50,4.03 96.5,27.5" fill="var(--dsw-alias-brand-primary, #2563eb)" fill-opacity=".09"/>
+        <polyline points="3.50,7.44 8.39,7.44 13.29,7.44 18.18,7.44 23.08,7.44 27.97,15.50 32.87,4.94 37.76,4.46 42.66,4.46 47.55,4.46 52.45,4.46 57.34,4.46 62.24,4.46 67.13,4.46 72.03,4.03 76.92,4.03 81.82,4.03 86.71,4.03 91.61,4.03 96.50,4.03" fill="none" stroke="var(--dsw-alias-brand-primary, #2563eb)" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>
+        <circle cx="96.50" cy="4.03" r="2.2" fill="var(--dsw-alias-brand-primary, #2563eb)" stroke="#fff" stroke-width="1" vector-effect="non-scaling-stroke"/>
+      </svg>
+      <div class="hk-axis"><span style="top:-1px">10</span><span style="top:50%;margin-top:-6px">5</span></div>
+    </div>
+    <div class="hk-trend__foot"><span>12:52 · 8.36</span><span>低 5 / 高 9.78</span><span>13:26 · 9.78</span></div>
+  </div>
+
+  <div class="hk-sec"><span class="hk-sec__t">问题</span><span class="hk-sec__n">17 条 · 按严重度</span><span class="hk-sec__sp"></span><span class="hk-sec__n">点开看根因</span></div>
+  <details class="hk-row">
+  <summary><span class="hk-bar" style="--h:var(--dsw-alias-brand-primary, #2563eb)"></span>
+    <span class="hk-row__main"><b>R10</b> <span class="hk-row__title">高危扩展面未设白名单/黑名单 1 处</span><span class="hk-row__meta">安全</span></span>
+    <svg class="hk-chev" viewBox="0 0 16 16" width="12" height="12" aria-hidden="true"><path d="M6 4l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  </summary>
+  <div class="hk-row__body">
+    <div class="hk-kv"><em>维度</em>安全 · MEASURED</div>
+    
+    <div class="hk-kv"><em>证据</em><code>C:\Users\Zuoyunlai\.dsh/profiles</code></div>
+    <div class="hk-kv"><em>测到的值</em><code>{&quot;surfaces&quot;:[{&quot;profile&quot;:&quot;desktop&quot;,&quot;entry&quot;:&quot;dsh-vision-bridge&quot;,&quot;keys&quot;:[&quot;dsh-vision-bridge.allowedUrlHosts&quot;]}]}</code></div>
+    <div class="hk-kv"><em>怎么修</em>逐项开通 allowlist/blocklist；无明确需求时保持空数组是显式接受风险</div>
+    <div class="hk-fp">R10</div>
+  </div>
+</details><details class="hk-row">
+  <summary><span class="hk-bar" style="--h:var(--dsw-alias-brand-primary, #2563eb)"></span>
+    <span class="hk-row__main"><b>R12</b> <span class="hk-row__title">插件声明了模型值，但无法静态核对运行时实际值（3 处）</span><span class="hk-row__meta">模型成本</span></span>
+    <svg class="hk-chev" viewBox="0 0 16 16" width="12" height="12" aria-hidden="true"><path d="M6 4l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  </summary>
+  <div class="hk-row__body">
+    <div class="hk-kv"><em>维度</em>模型成本 · UNKNOWN</div>
+    
+    <div class="hk-kv"><em>证据</em><code>C:\Users\Zuoyunlai\.dsh/profiles</code></div>
+    <div class="hk-kv"><em>测到的值</em><code>{&quot;declared&quot;:[{&quot;entry&quot;:&quot;image-gen&quot;,&quot;key&quot;:&quot;seedreamModel&quot;,&quot;value&quot;:&quot;doubao-seedream-5-0-260128&quot;},{&quot;entry&quot;:&quot;image-gen&quot;,&quot;key&quot;:&quot;dashscopeModel&quot;,&quot;value&quot;:&quot;qwen-image-3.0&quot;},{&quot;entry&quot;:&quot;image-gen&quot;,&quot;key&quot;:&quot;zhipuModel&quot;,&quot;value&quot;:&quot;glm-image&quot;}]}</code></div>
+    <div class="hk-kv"><em>怎么修</em>需在宿主内对照运行时注入值；静态审计只能标 UNKNOWN，不猜</div>
+    <div class="hk-fp">R12</div>
+  </div>
+</details><details class="hk-row">
+  <summary><span class="hk-bar" style="--h:var(--dsw-alias-brand-primary, #2563eb)"></span>
+    <span class="hk-row__main"><b>R16</b> <span class="hk-row__title">同时挂载 5 套记忆/上下文插件，每轮固定注入开销未量化</span><span class="hk-row__meta">上下文</span></span>
+    <svg class="hk-chev" viewBox="0 0 16 16" width="12" height="12" aria-hidden="true"><path d="M6 4l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  </summary>
+  <div class="hk-row__body">
+    <div class="hk-kv"><em>维度</em>上下文 · MEDIUM</div>
+    
+    <div class="hk-kv"><em>证据</em><code>C:\Users\Zuoyunlai\.dsh/profiles</code></div>
+    <div class="hk-kv"><em>测到的值</em><code>{&quot;bundles&quot;:[&quot;dsh-chronicle&quot;,&quot;@yolk_vat-y/dsh-project-memory&quot;,&quot;dsh-mnemon&quot;,&quot;dsh-context&quot;,&quot;@openviking/dsh-memory-plugin&quot;]}</code></div>
+    <div class="hk-kv"><em>怎么修</em>需宿主内采样每轮注入 token；定主备后关掉其余自动注入</div>
+    <div class="hk-fp">R16</div>
+  </div>
+</details>
+  <details class="hk-group">
+    <summary><svg width="11" height="11" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 4l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <span>其余 <b>14</b> 条 INFO（不计分，仅提示）</span></summary>
+    <details class="hk-row hk-row--compact">
+  <summary><span class="hk-bar" style="--h:#6b7280"></span>
+    <span class="hk-row__main"><b>R3c</b> <span class="hk-row__title">豁免含历史多版本列表且不含实装版本（需人工判断）</span></span>
+    <svg class="hk-chev" viewBox="0 0 16 16" width="12" height="12" aria-hidden="true"><path d="M6 4l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  </summary>
+  <div class="hk-row__body">
+    <div class="hk-kv"><em>维度</em>一致性 · MEDIUM</div>
+    
+    
+    <div class="hk-kv"><em>测到的值</em><code>{&quot;unresolved&quot;:[{&quot;entry&quot;:&quot;dsh-theme-palette@1.4.3 || 1.5.0 || 1.5.2 || 1.5.3 || 1.6.0&quot;,&quot;installed&quot;:&quot;1.9.7&quot;}]}</code></div>
+    <div class="hk-kv"><em>怎么修</em>该规则没有固定修法，按证据自行判断</div>
+    <div class="hk-fp">R3c</div>
+  </div>
+</details><details class="hk-row hk-row--compact">
+  <summary><span class="hk-bar" style="--h:#6b7280"></span>
+    <span class="hk-row__main"><b>R11</b> <span class="hk-row__title">未发现成本记账文件</span></span>
+    <svg class="hk-chev" viewBox="0 0 16 16" width="12" height="12" aria-hidden="true"><path d="M6 4l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  </summary>
+  <div class="hk-row__body">
+    <div class="hk-kv"><em>维度</em>模型成本 · UNKNOWN</div>
+    
+    
+    
+    <div class="hk-kv"><em>怎么修</em>该规则没有固定修法，按证据自行判断</div>
+    <div class="hk-fp">R11</div>
+  </div>
+</details><details class="hk-row hk-row--compact">
+  <summary><span class="hk-bar" style="--h:#6b7280"></span>
+    <span class="hk-row__main"><b>R15</b> <span class="hk-row__title">客户端服务插件数 56 &gt; 最大 bundles 43</span></span>
+    <svg class="hk-chev" viewBox="0 0 16 16" width="12" height="12" aria-hidden="true"><path d="M6 4l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  </summary>
+  <div class="hk-row__body">
+    <div class="hk-kv"><em>维度</em>插件 · MEASURED</div>
+    
+    
+    <div class="hk-kv"><em>测到的值</em><code>{&quot;served&quot;:56,&quot;bundles&quot;:43}</code></div>
+    <div class="hk-kv"><em>怎么修</em>该规则没有固定修法，按证据自行判断</div>
+    <div class="hk-fp">R15</div>
+  </div>
+</details><details class="hk-row hk-row--compact">
+  <summary><span class="hk-bar" style="--h:#6b7280"></span>
+    <span class="hk-row__main"><b>R17</b> <span class="hk-row__title">大目录 attachments 约 199MB（1110 文件）</span></span>
+    <svg class="hk-chev" viewBox="0 0 16 16" width="12" height="12" aria-hidden="true"><path d="M6 4l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  </summary>
+  <div class="hk-row__body">
+    <div class="hk-kv"><em>维度</em>磁盘 · MEASURED</div>
+    
+    <div class="hk-kv"><em>证据</em><code>C:\Users\Zuoyunlai\.dsh/attachments</code></div>
+    <div class="hk-kv"><em>测到的值</em><code>{&quot;mb&quot;:199,&quot;approx&quot;:false,&quot;oldestAgeDays&quot;:28,&quot;verdict&quot;:&quot;NO_DATA_OLD_ENOUGH&quot;}</code></div>
+    <div class="hk-kv"><em>怎么修</em>该规则没有固定修法，按证据自行判断</div>
+    <div class="hk-fp">R17</div>
+  </div>
+</details><details class="hk-row hk-row--compact">
+  <summary><span class="hk-bar" style="--h:#6b7280"></span>
+    <span class="hk-row__main"><b>R17</b> <span class="hk-row__title">大目录 dsh-runtimes 约 169MB（1147 文件，已截断）</span></span>
+    <svg class="hk-chev" viewBox="0 0 16 16" width="12" height="12" aria-hidden="true"><path d="M6 4l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  </summary>
+  <div class="hk-row__body">
+    <div class="hk-kv"><em>维度</em>磁盘 · MEASURED</div>
+    
+    <div class="hk-kv"><em>证据</em><code>C:\Users\Zuoyunlai\.dsh/dsh-runtimes</code></div>
+    <div class="hk-kv"><em>测到的值</em><code>{&quot;mb&quot;:169,&quot;approx&quot;:true,&quot;oldestAgeDays&quot;:17,&quot;verdict&quot;:&quot;NO_DATA_OLD_ENOUGH&quot;}</code></div>
+    <div class="hk-kv"><em>怎么修</em>该规则没有固定修法，按证据自行判断</div>
+    <div class="hk-fp">R17</div>
+  </div>
+</details><details class="hk-row hk-row--compact">
+  <summary><span class="hk-bar" style="--h:#6b7280"></span>
+    <span class="hk-row__main"><b>R17</b> <span class="hk-row__title">大目录 game-material-master 约 161MB（153 文件）</span></span>
+    <svg class="hk-chev" viewBox="0 0 16 16" width="12" height="12" aria-hidden="true"><path d="M6 4l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  </summary>
+  <div class="hk-row__body">
+    <div class="hk-kv"><em>维度</em>磁盘 · MEASURED</div>
+    
+    <div class="hk-kv"><em>证据</em><code>C:\Users\Zuoyunlai\.dsh/game-material-master</code></div>
+    <div class="hk-kv"><em>测到的值</em><code>{&quot;mb&quot;:161,&quot;approx&quot;:false,&quot;oldestAgeDays&quot;:25,&quot;verdict&quot;:&quot;NO_DATA_OLD_ENOUGH&quot;}</code></div>
+    <div class="hk-kv"><em>怎么修</em>该规则没有固定修法，按证据自行判断</div>
+    <div class="hk-fp">R17</div>
+  </div>
+</details><details class="hk-row hk-row--compact">
+  <summary><span class="hk-bar" style="--h:#6b7280"></span>
+    <span class="hk-row__main"><b>R17</b> <span class="hk-row__title">大目录 sessions 约 190MB（516 文件）</span></span>
+    <svg class="hk-chev" viewBox="0 0 16 16" width="12" height="12" aria-hidden="true"><path d="M6 4l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  </summary>
+  <div class="hk-row__body">
+    <div class="hk-kv"><em>维度</em>磁盘 · MEASURED</div>
+    
+    <div class="hk-kv"><em>证据</em><code>C:\Users\Zuoyunlai\.dsh/sessions</code></div>
+    <div class="hk-kv"><em>测到的值</em><code>{&quot;mb&quot;:190,&quot;approx&quot;:false,&quot;oldestAgeDays&quot;:30,&quot;verdict&quot;:&quot;NO_DATA_OLD_ENOUGH&quot;}</code></div>
+    <div class="hk-kv"><em>怎么修</em>该规则没有固定修法，按证据自行判断</div>
+    <div class="hk-fp">R17</div>
+  </div>
+</details><details class="hk-row hk-row--compact">
+  <summary><span class="hk-bar" style="--h:#6b7280"></span>
+    <span class="hk-row__main"><b>R17</b> <span class="hk-row__title">大目录 _backup 约 117MB（876 文件）</span></span>
+    <svg class="hk-chev" viewBox="0 0 16 16" width="12" height="12" aria-hidden="true"><path d="M6 4l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  </summary>
+  <div class="hk-row__body">
+    <div class="hk-kv"><em>维度</em>磁盘 · MEASURED</div>
+    
+    <div class="hk-kv"><em>证据</em><code>C:\Users\Zuoyunlai\.dsh/_backup</code></div>
+    <div class="hk-kv"><em>测到的值</em><code>{&quot;mb&quot;:117,&quot;approx&quot;:false,&quot;oldestAgeDays&quot;:26,&quot;verdict&quot;:&quot;NO_DATA_OLD_ENOUGH&quot;}</code></div>
+    <div class="hk-kv"><em>怎么修</em>该规则没有固定修法，按证据自行判断</div>
+    <div class="hk-fp">R17</div>
+  </div>
+</details><details class="hk-row hk-row--compact">
+  <summary><span class="hk-bar" style="--h:#6b7280"></span>
+    <span class="hk-row__main"><b>R6</b> <span class="hk-row__title">多 profile 的 providers 段一致（2 份副本）</span></span>
+    <svg class="hk-chev" viewBox="0 0 16 16" width="12" height="12" aria-hidden="true"><path d="M6 4l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  </summary>
+  <div class="hk-row__body">
+    <div class="hk-kv"><em>维度</em>一致性 · MEASURED</div>
+    
+    
+    <div class="hk-kv"><em>测到的值</em><code>{&quot;profiles&quot;:[&quot;desktop&quot;,&quot;web&quot;]}</code></div>
+    <div class="hk-kv"><em>怎么修</em>该规则没有固定修法，按证据自行判断</div>
+    <div class="hk-fp">R6</div>
+  </div>
+</details><details class="hk-row hk-row--compact">
+  <summary><span class="hk-bar" style="--h:#6b7280"></span>
+    <span class="hk-row__main"><b>R19</b> <span class="hk-row__title">默认工作区未见明显散件</span></span>
+    <svg class="hk-chev" viewBox="0 0 16 16" width="12" height="12" aria-hidden="true"><path d="M6 4l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  </summary>
+  <div class="hk-row__body">
+    <div class="hk-kv"><em>维度</em>磁盘 · MEASURED</div>
+    
+    
+    
+    <div class="hk-kv"><em>怎么修</em>该规则没有固定修法，按证据自行判断</div>
+    <div class="hk-fp">R19</div>
+  </div>
+</details><details class="hk-row hk-row--compact">
+  <summary><span class="hk-bar" style="--h:#6b7280"></span>
+    <span class="hk-row__main"><b>R19b</b> <span class="hk-row__title">默认工作区里有 5 个开发中的插件仓（.tmp-dsh-academic、dsh-chronicle、dsh-pet、dsh-rightbar-quicknav、dsh-theme-palette）</span></span>
+    <svg class="hk-chev" viewBox="0 0 16 16" width="12" height="12" aria-hidden="true"><path d="M6 4l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  </summary>
+  <div class="hk-row__body">
+    <div class="hk-kv"><em>维度</em>磁盘 · MEASURED · 建议项</div>
+    
+    <div class="hk-kv"><em>证据</em><code>E:\Documents\deepseek-harness\default-workspace</code></div>
+    <div class="hk-kv"><em>测到的值</em><code>{&quot;dirs&quot;:[&quot;.tmp-dsh-academic&quot;,&quot;dsh-chronicle&quot;,&quot;dsh-pet&quot;,&quot;dsh-rightbar-quicknav&quot;,&quot;dsh-theme-palette&quot;]}</code></div>
+    <div class="hk-kv"><em>怎么修</em>不是垃圾；风险只在 profile 用 file:/link: 指向它们（见 R22）。要解耦就迁到 plugins/ 并改依赖</div>
+    <div class="hk-fp">R19b</div>
+  </div>
+</details><details class="hk-row hk-row--compact">
+  <summary><span class="hk-bar" style="--h:#6b7280"></span>
+    <span class="hk-row__main"><b>R21d</b> <span class="hk-row__title">预设『论文伴读』屏蔽了运行时上下文（complete + includeRuntimeContext:false）</span></span>
+    <svg class="hk-chev" viewBox="0 0 16 16" width="12" height="12" aria-hidden="true"><path d="M6 4l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  </summary>
+  <div class="hk-row__body">
+    <div class="hk-kv"><em>维度</em>插件 · MEASURED · 建议项</div>
+    
+    
+    <div class="hk-kv"><em>测到的值</em><code>{&quot;dir&quot;:&quot;paper-reader&quot;}</code></div>
+    <div class="hk-kv"><em>怎么修</em>这类预设不适合拿来跑审计/诊断，会缺上下文信息</div>
+    <div class="hk-fp">R21d#paper-reader</div>
+  </div>
+</details><details class="hk-row hk-row--compact">
+  <summary><span class="hk-bar" style="--h:#6b7280"></span>
+    <span class="hk-row__main"><b>R21e</b> <span class="hk-row__title">本地预设 1 个，其余为内置（不可静态审计）</span></span>
+    <svg class="hk-chev" viewBox="0 0 16 16" width="12" height="12" aria-hidden="true"><path d="M6 4l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  </summary>
+  <div class="hk-row__body">
+    <div class="hk-kv"><em>维度</em>插件 · UNKNOWN</div>
+    
+    
+    
+    <div class="hk-kv"><em>怎么修</em>该规则没有固定修法，按证据自行判断</div>
+    <div class="hk-fp">R21e</div>
+  </div>
+</details><details class="hk-row hk-row--compact">
+  <summary><span class="hk-bar" style="--h:#6b7280"></span>
+    <span class="hk-row__main"><b>R21</b> <span class="hk-row__title">本地 agent preset 1 个：论文伴读(2 条目)</span></span>
+    <svg class="hk-chev" viewBox="0 0 16 16" width="12" height="12" aria-hidden="true"><path d="M6 4l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  </summary>
+  <div class="hk-row__body">
+    <div class="hk-kv"><em>维度</em>插件 · MEASURED</div>
+    
+    
+    <div class="hk-kv"><em>测到的值</em><code>{&quot;presets&quot;:[{&quot;name&quot;:&quot;论文伴读&quot;,&quot;entries&quot;:2,&quot;names&quot;:[&quot;@deepseek-ai/dsh-persona&quot;,&quot;cordis:group&quot;,&quot;@deepseek-ai/dsh-compaction-basic&quot;,&quot;@deepseek-ai/dsh-command-compact&quot;,&quot;@deepseek-ai/dsh-compaction-tool-result-pruner&quot;]}]}</code></div>
+    <div class="hk-kv"><em>怎么修</em>该规则没有固定修法，按证据自行判断</div>
+    <div class="hk-fp">R21</div>
+  </div>
+</details>
+  </details>
+
+  <div class="hk-sec"><span class="hk-sec__t">修复顺序</span><span class="hk-sec__n">P0 封顶 → 单条增量</span></div>
+  <ol class="hk-steps"><li class="hk-step hk-step--done"><div class="hk-step__t"><span class="hk-num">1</span>P0 已清零，无封顶</div></li><li class="hk-step"><div class="hk-step__t"><span class="hk-num">2</span>按单条增量修，基准 9.78</div>
+    <div class="hk-plan"><div class="hk-plan__row"><span class="hk-delta">+0.12</span><span class="hk-plan__txt"><b>R10</b> 高危扩展面未设白名单/黑名单 1 处</span></div><div class="hk-plan__row"><span class="hk-delta">+0.07</span><span class="hk-plan__txt"><b>R12</b> 插件声明了模型值，但无法静态核对运行时实际值（3 处）</span></div><div class="hk-plan__row"><span class="hk-delta">+0.02</span><span class="hk-plan__txt"><b>R16</b> 同时挂载 5 套记忆/上下文插件，每轮固定注入开销未量化</span></div></div></li><li class="hk-step hk-step--done"><div class="hk-step__t"><span class="hk-num">3</span>全部修完 → <b>10 / 10</b></div></li></ol>
+
+  <div class="hk-sec"><span class="hk-sec__t">优化建议</span></div>
+  <ul class="hk-adv">
+    <li class="warn"><em>!</em><span>服务插件 56 个超过宿主上限 43：先砍「同能力多实现」，别砍基础设施。</span></li>
+    <li><em>1</em><span>image 有 3 个实现，主力是 dsh-image-gen；其余 @goodandready/dsh-vision-bridge、@liustack/modlens 为可关候选。</span></li>
+    <li><em>2</em><span>5 套记忆/上下文插件同时挂载：dsh-chronicle、@yolk_vat-y/dsh-project-memory、dsh-mnemon、dsh-context、@openviking/dsh-memory-plugin。</span></li>
+    <li><em>3</em><span>可清理 47.6 MB（2 组，含远程镜像）：先预览，执行移入回收区 7 天可还原。</span></li>
+  </ul>
+
+  <div class="hk-sec"><span class="hk-sec__t">能力域</span><span class="hk-sec__sp"></span></div>
+  <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:2px"><span class="hk-chip hk-chip--sm" style="--h:#6b7280;"><i></i>有<b>8</b></span><span class="hk-chip hk-chip--sm" style="--h:#2563eb;"><i></i>多<b>4</b></span><span class="hk-chip hk-chip--sm" style="--h:#dc2626;"><i></i>冲突<b>1</b></span><span class="hk-chip hk-chip--sm" style="--h:#b45309;"><i></i>失效<b>2</b></span><span class="hk-chip hk-chip--sm" style="--h:#dc2626;"><i></i>无<b>1</b></span></div>
+  <div class="hk-caps">
+    <div class="hk-caps__row"><span class="hk-caps__l">模型路由</span><span class="hk-pill" style="color:#b45309;background:color-mix(in srgb,#b45309 13%,transparent)">失效</span><span class="hk-caps__d">声明 8 个 provider，只有 5 个有压缩策略（模型目录与可路由面不一致）</span></div><div class="hk-caps__row"><span class="hk-caps__l">会话持久化</span><span class="hk-pill" style="color:#6b7280;background:color-mix(in srgb,#6b7280 13%,transparent)">未知</span><span class="hk-caps__d">会话持久化由宿主内置承担，静态审计分不出是否挂载</span></div><div class="hk-caps__row"><span class="hk-caps__l">文件与 shell</span><span class="hk-pill" style="color:#6b7280;background:color-mix(in srgb,#6b7280 13%,transparent)">未知</span><span class="hk-caps__d">shell 由宿主 ops 能力提供，插件层看不到</span></div><div class="hk-caps__row"><span class="hk-caps__l">检索（web）</span><span class="hk-pill" style="color:#dc2626;background:color-mix(in srgb,#dc2626 13%,transparent)">冲突</span><span class="hk-caps__d">抓取能力被两个实现同时接管：dsh-free-search（fetchProviderTakeover=true） 与 @deepseek-ai/dsh-web（fetchProvider=deepseek-fetch-api）</span></div><div class="hk-caps__row"><span class="hk-caps__l">记忆（短期）</span><span class="hk-pill" style="color:#2563eb;background:color-mix(in srgb,#2563eb 13%,transparent)">冗余</span><span class="hk-caps__d">4 套记忆实现同时挂着，每轮都可能注入</span></div><div class="hk-caps__row"><span class="hk-caps__l">记忆（长期/项目）</span><span class="hk-pill" style="color:#2563eb;background:color-mix(in srgb,#2563eb 13%,transparent)">冗余</span><span class="hk-caps__d">@yolk_vat-y/dsh-project-memory、dsh-mnemon、@openviking/dsh-memory-plugin</span></div><div class="hk-caps__row"><span class="hk-caps__l">视觉理解 / OCR</span><span class="hk-pill" style="color:#2563eb;background:color-mix(in srgb,#2563eb 13%,transparent)">冗余</span><span class="hk-caps__d">@goodandready/dsh-vision-bridge、@liustack/modlens</span></div><div class="hk-caps__row"><span class="hk-caps__l">成本可见性</span><span class="hk-pill" style="color:#b45309;background:color-mix(in srgb,#b45309 13%,transparent)">失效</span><span class="hk-caps__d">未发现成本记账文件</span></div><div class="hk-caps__row"><span class="hk-caps__l">代码工程</span><span class="hk-pill" style="color:#6b7280;background:color-mix(in srgb,#6b7280 13%,transparent)">未知</span><span class="hk-caps__d">git/测试能力由宿主与 CLI 提供，插件层分不出</span></div><div class="hk-caps__row"><span class="hk-caps__l">音视频</span><span class="hk-pill" style="color:#dc2626;background:color-mix(in srgb,#dc2626 13%,transparent)">缺失</span><span class="hk-caps__d">没有音视频实现</span></div><div class="hk-caps__row"><span class="hk-caps__l">数据与图表</span><span class="hk-pill" style="color:#6b7280;background:color-mix(in srgb,#6b7280 13%,transparent)">未知</span><span class="hk-caps__d">表格/图表能力可能由宿主 skill 提供，静态审计分不出</span></div><div class="hk-caps__row"><span class="hk-caps__l">主题与可用性</span><span class="hk-pill" style="color:#2563eb;background:color-mix(in srgb,#2563eb 13%,transparent)">冗余</span><span class="hk-caps__d">dsh-theme-palette、dsh-rightbar-quicknav、dsh-better-sidebar</span></div>
+  </div>
+  <div style="font-size:10px;color:var(--dsw-alias-label-secondary, #6b7280);margin-top:7px">四级补救阶梯用 audit_capabilities：配置 → provider → 插件 → 习惯。</div>
+
+  <details class="hk-group" style="margin-top:10px">
+    <summary><svg width="11" height="11" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 4l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <span>已退役 <b>3</b> 条（误报记档，不再计分）</span></summary>
+    <div style="padding-bottom:6px"><div style="font-size:11px;color:var(--dsw-alias-label-secondary, #6b7280);padding:4px 0;border-top:1px solid var(--dsw-alias-border, rgba(128,128,128,.28))">R20 · 能力冗余：image 有 3 个实现</div><div style="font-size:11px;color:var(--dsw-alias-label-secondary, #6b7280);padding:4px 0;border-top:1px solid var(--dsw-alias-border, rgba(128,128,128,.28))">R21a · 预设『论文伴读』没有对应的已安装插件（疑似孤儿预设）</div><div style="font-size:11px;color:var(--dsw-alias-label-secondary, #6b7280);padding:4px 0;border-top:1px solid var(--dsw-alias-border, rgba(128,128,128,.28))">R21b · 预设『论文伴读』引用了未安装的插件 1 个</div></div>
+  </details>
+
+  <div class="hk-foot"><span>只读 · 不写配置</span><span>缓存 60 秒</span></div>
+</div></body></html>

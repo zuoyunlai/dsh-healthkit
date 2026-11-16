@@ -1,5 +1,5 @@
 {
-  "version": "rubric-v1.1-2026-11-16",
+  "version": "rubric-v1.2-2026-11-16",
   "dimensions": [
     { "key": "security", "weight": 25, "label": "安全与权限边界" },
     { "key": "consistency", "weight": 20, "label": "配置一致性/可维护性" },
@@ -9,7 +9,8 @@
     { "key": "disk", "weight": 10, "label": "磁盘卫生" },
     { "key": "context", "weight": 5, "label": "上下文效率" }
   ],
-  "penalty": { "P0": 4.0, "P1": 1.8, "P2": 0.5, "UNKNOWN": 0.5 },
+  "penalty": { "P0": 4.0, "P1": 1.8, "P2": 0.5 },
+  "unknownDiscount": 0.5,
   "base": 10,
   "dimensionCaps": [ { "findings": 3, "max": 5.5 }, { "findings": 5, "max": 3.5 } ],
   "caps": [

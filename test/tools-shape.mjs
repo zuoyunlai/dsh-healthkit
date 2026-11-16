@@ -42,6 +42,22 @@ assert.ok(Array.isArray(e2.candidates) && e2.candidates.length > 0, '空参应�
 const e3 = await byName.audit_explain.execute({ finding: 'NO_SUCH_FP' });
 assert.equal(e3.found, false);
 
+// 审计反哺 V08：记档→撤销完整回环（跑在临时 HOME 上，不碰真实退役库）。
+// 记档容易、纠错也得有门——没有撤销入口的退役等于只能手改 JSON。
+{
+  const f0 = await byName.audit_findings.execute({});
+  assert.ok(f0.items.length > 0, '临时 HOME 上应至少有一条发现可供回环');
+  const fp0 = f0.items[0].fp;
+  const ret = await byName.audit_retire.execute({ finding: fp0, reason: 'V08 回环测试：记档' });
+  assert.equal(ret.ok, true, '记档应成功：' + ret.summary);
+  const f1 = await byName.audit_findings.execute({});
+  assert.ok(!f1.items.some((x) => x.fp === fp0), '记档后它不该再出现在问题清单');
+  const res = await byName.audit_retire.execute({ finding: fp0, action: 'restore' });
+  assert.equal(res.ok, true, '撤销应成功：' + res.summary);
+  const f2 = await byName.audit_findings.execute({});
+  assert.ok(f2.items.some((x) => x.fp === fp0), '撤销后它应重新出现并计分');
+}
+
 const p = await byName.audit_plan.execute({});
 assert.ok(p.steps.length >= 2, '计划至少两步');
 assert.equal(typeof p.base, 'number');

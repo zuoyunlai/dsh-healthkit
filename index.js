@@ -249,11 +249,12 @@ export function buildTools(deps) {
   return [
   {
     name: 'audit_run',
-    description: '对当前 DSH 安装跑一次只读体检：返回总分、分档与 P0/P1/P2 计数（不修改任何配置、不联网）',
+    description: '对当前 DSH 安装跑一次只读体检：返回总分、分档与 P0/P1/P2 计数。只读指「不碰被检对象」——会向插件自己的数据目录写一条账本与一份运行快照（record=false 可关）。不联网',
     parameters: {
       type: 'object',
       properties: {
         scenario: { type: 'string', description: 'general|code|design|writing，缺省 general' },
+        record: { type: 'boolean', description: '是否记账本与运行快照（写插件自己的数据目录，不碰被检对象），缺省 true' },
       },
       additionalProperties: false,
     },
@@ -277,13 +278,16 @@ export function buildTools(deps) {
     execute: async (args) => {
       const { audit } = await import('./src/engine.mjs');
       const r = audit({ scenario: (args && args.scenario) || 'general' });
-      const hist = await import('./src/history.mjs');
-      hist.append(r, { scenario: (args && args.scenario) || 'general' });
-      // 写运行快照：跨次差异归因的基线（audit_diff 用）。
-      try {
-        const snap = await import('./src/snapshot.mjs');
-        snap.writeRun(r, { home: r.facts.home, scenario: (args && args.scenario) || 'general', version: r.self.version });
-      } catch (e) { /* 快照写失败不该让体检失败 */ }
+      // 记账 + 快照：写的是插件自己的数据目录，不碰被检对象；record=false 可关（审计反哺 V09）。
+      if (!args || args.record !== false) {
+        const hist = await import('./src/history.mjs');
+        hist.append(r, { scenario: (args && args.scenario) || 'general' });
+        // 写运行快照：跨次差异归因的基线（audit_diff 用）。
+        try {
+          const snap = await import('./src/snapshot.mjs');
+          snap.writeRun(r, { home: r.facts.home, scenario: (args && args.scenario) || 'general', version: r.self.version });
+        } catch (e) { /* 快照写失败不该让体检失败 */ }
+      }
       const by = {};
       r.findings.forEach((f) => { by[f.severity] = (by[f.severity] || 0) + 1; });
       const top = r.findings
@@ -699,12 +703,13 @@ export function buildTools(deps) {
   },
   {
     name: 'audit_retire',
-    description: '误报记档：把一条体检发现标记为「已退役」（误报），之后不再计入评分也不再出现在问题清单。原因必填——没有理由的记档等于永久静音一条真问题。传 fp 或规则号；不带参数则列出当前可记档的候选',
+    description: '误报记档：把一条体检发现标记为「已退役」（误报），之后不再计入评分。原因必填——没有理由的记档等于永久静音一条真问题。action=restore 可撤销记档（撤后重新计分）。传 fp 或规则号；不带参数则列出候选',
     parameters: {
       type: 'object',
       properties: {
-        finding: { type: 'string', description: '要记档的指纹 fp（如 R14#2f1a）或规则号（如 R14）；省略则只列候选' },
-        reason: { type: 'string', description: '为什么这是误报（必填，带 finding 时）' },
+        finding: { type: 'string', description: '要记档/撤销的指纹 fp（如 R14#2f1a）或规则号；省略则只列候选' },
+        reason: { type: 'string', description: '为什么这是误报（记档时必填；撤销不需要）' },
+        action: { type: 'string', description: 'retire|restore|list；缺省：给了 finding 即记档。restore=撤销记档' },
         scenario: { type: 'string', description: 'general|code|design|writing，缺省 general' },
       },
       additionalProperties: false,
@@ -730,7 +735,23 @@ export function buildTools(deps) {
           summary: '要记档哪一条？传 finding=<fp 或规则号> 与 reason="原因"。当前候选：\n' + (cands.length ? cands.map((c) => '- ' + c).join('\n') : '（没有可记档的问题）'),
         };
       }
-      if (!reason) {
+      // 撤销记档（审计反哺 V08）：记档容易、纠错也得有门，否则误记一条真问题只能手改 JSON。
+      if (a.action === 'restore') {
+        const r0 = audit({ scenario: a.scenario || 'general', skipRetire: true });
+        const store0 = eng.loadRetirements(r0.facts.home);
+        // 精确 fp 优先；给规则号则撤该规则下全部记档（摘要里说明撤了几条）
+        const exact = store0[key] ? [key] : Object.keys(store0).filter((fp) => fp.split('#')[0] === key);
+        if (!exact.length) {
+          return { action: 'restore', ok: false, fp: key, summary: '没有「' + key + '」的记档可撤销。不带参数可查看当前候选与已记档条目。' };
+        }
+        for (const fp of exact) delete store0[fp];
+        eng.saveRetirements(r0.facts.home, store0);
+        return {
+          action: 'restore', ok: true, fp: exact.join('、'),
+          summary: '已撤销记档：' + exact.join('、') + '。这些发现会重新计入评分与问题清单。',
+        };
+      }
+      if (a.action !== 'restore' && !reason) {
         return {
           action: 'retire', ok: false, fp: key, reason: '',
           summary: '记档必须给理由（reason 必填）。没有理由的记档等于永久静音一条可能为真的问题，所以这里不替你补默认理由。',
@@ -746,7 +767,7 @@ export function buildTools(deps) {
       eng.saveRetirements(r.facts.home, store);
       return {
         action: 'retire', ok: true, fp: hit.fp, reason: reason, title: hit.title,
-        summary: '已记档：' + hit.fp + '（' + hit.title + '）\n理由：' + reason + '\n它不再计入评分，也不再出现在问题清单里。取消记档：删掉 $DSH_HOME/dsh-healthkit/retirements.json 里这条。',
+        summary: '已记档：' + hit.fp + '（' + hit.title + '）\n理由：' + reason + '\n它不再计入评分，也不再出现在问题清单里。撤销：audit_retire action=restore，或 dsh-healthkit --unretire ' + hit.fp + '。',
       };
     },
   },

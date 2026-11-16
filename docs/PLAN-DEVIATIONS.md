@@ -48,6 +48,13 @@
 - 可粘贴骨架若只有 `reportDir` / `allowRepair` 两个字段，粘贴它没有实际价值；
 - 「零插件依赖的 npx 形态」需要把 CLI 从插件包里拆出去，是重构，收益不足。
 
+**5. `allowRepair` 配置项 — 删除（2026-11-16 审计反哺 V06）**
+
+- 实测：该字段只在 cordis.patch.yml 与文档里出现，代码零引用——空壳声明；
+- 本插件既有立场是「只出命令不落盘」，不存在「打开开关就改配置」的形态，
+  留着只会让读者误以为有修复开关；
+- 已从 cordis.patch.yml 删除；plugin-status.json 的 configKeys 相应只剩 reportDir。
+
 ### 补充说明
 
 - **`history.jsonl` 只存前 6 条 P0/P1 指纹**，P1 超过 6 条时「比上次多出了哪条」无法判断。

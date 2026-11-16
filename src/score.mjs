@@ -10,7 +10,12 @@ export function score(rubric, findings, scenario) {
   findings.forEach(function (f) {
     if (!byKey[f.dimension] || f.severity === 'INFO' || f.advisory === true) return;
     var d = byKey[f.dimension];
-    var pen = f.confidence === 'UNKNOWN' ? rubric.penalty.UNKNOWN : (rubric.penalty[f.severity] || 0);
+    // 审计反哺 V04：UNKNOWN 从「固定轻罚」改为「按名义严重度打折」——
+    // 旧表里 P1 已证扣 1.8 而 P1 UNKNOWN 只扣 0.5，取证不足反而比已证问题罚得轻，
+    // 会系统性高估健康度。unknownDiscount 是折扣系数（0.5 = 罚名义值的一半）。
+    var nominal = rubric.penalty[f.severity] || 0;
+    var disc = typeof rubric.unknownDiscount === 'number' ? rubric.unknownDiscount : 0.5;
+    var pen = f.confidence === 'UNKNOWN' ? nominal * disc : nominal;
     d.penalties += pen; d.count += 1; d.items.push(f.ruleId);
     if (f.severity === 'P0') p0++;
   });

@@ -1,5 +1,45 @@
 # CHANGELOG
 
+## 0.9.0 — 2026-11-16
+
+### 审计反哺修订批（docs/REVIEW-2026-11-16.md 的 V01–V10 全部落地）
+
+第三方审计核实了 11 条（10 成立 / 1 撤回），本批修完 10 条成立项。
+
+**V01 · R2c 分流**：`YAML_UNAVAILABLE`（体检器自己取不到解析器）从 P0/MEASURED 降为
+P2/UNKNOWN——「体检器没能力判断」不该触发用户的总分封顶；真语法错仍是 P0。
+
+**V03 · 指纹唯一**：R13 的 measured 带 `profile`、R17 带 `dir`、R22 兜底 `broken[0].dep`。
+实测：30 条发现 30 个指纹（原 25 个）；退役一条 R17 现在只静音它自己（原连带 5 条）。
+新增夹具断言 `fingerprints-unique`。
+
+**V04 · UNKNOWN 计罚**：从固定 0.5 改为按名义严重度打折（`unknownDiscount: 0.5`）。
+P1 UNKNOWN 现扣 0.9（旧 0.5）——「查不出」不再比「证实了」罚得轻。rubric 升 **v1.2**。
+
+**V05 · 降级不崩**：`runRules` 入口对 profile 关键字段与 disk/logs/engineAssets 默认化。
+降级测试从 4 场景扩到 9（含 3 个原来直接 TypeError 的字段级缺失），全部通过。
+
+**V07 · R23 移到采集层**：`noManifestBundles` 由 collect 产出，规则层不再读文件系统——
+原实现导致这条 **P0 规则的判别逻辑零测试**。夹具补 R18/R23/R14b/R3d 触发面，must-fire 扩到 12 条。
+
+**V02 · peer 走廊**：补 `@deepseek-ai/dsh >=0.2.2-0 <0.3.0`（对齐 dsh-chronicle），
+sidebar peer 放宽 `>=0.1.5-0 <0.3.0-0`（覆盖 latest 与 next 两条发布线），compat 同步。
+前提（宿主宽松比较）已记入 NOTES-host-contract §五。
+
+**V06 · allowRepair 删除**：实测代码零引用的空壳声明，与「只出命令不落盘」立场矛盾，
+已从 cordis.patch.yml 移除并记档 PLAN-DEVIATIONS。
+
+**V08 · 撤销退役**：`audit_retire action=restore` + CLI `--unretire`。CLI 实测回环：
+retire → 静音 0 条 → unretire → 恢复 1 条。工具面回环测试进 tools-shape。
+
+**V09 · 只读语义精确化**：`audit_run` 描述点明「写自己的账本与快照」，新增 `record=false`。
+
+**V10 · 报告跨次三分**：报告新增「三之三之二、跨次对比」段——新增 / 真修好 / 新退役，
+分数变化从此能区分「真修好了」与「被静音了」。真机实测生效。
+
+**升级注意**：指纹语义变化（R13/R17/R23 带后缀）会使升级后第一次跨次对比把旧裸指纹的
+R13/R17 报成「真修好」、新后缀指纹报成「新增」——一次性对齐，之后恢复精确。
+
 ## 0.8.6 — 2026-11-16
 
 ### 修：audit_capabilities 的「有实现」计数恒为 0

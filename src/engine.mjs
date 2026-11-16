@@ -16,6 +16,7 @@ export function saveRetirements(home, store) {
 }
 
 import { attribution } from './score.mjs';
+import { latestRun, diffRuns } from './snapshot.mjs';
 
 // 账本行数：self 段用。读不到就返回 null（不抛，体检器自己出问题不该影响体检结论）。
 function require_history(home) {
@@ -63,6 +64,19 @@ export function audit(opts) {
     self.historyRuns = null;
     self.notes.push('账本读取失败：' + ((e && e.message) || e));
   }
-  var report = renderReport(facts, kept, sc, { retired: retired, attr: attr, version: pkgVersion, self: self });
+  // 审计反哺 V10：报告并入跨次三分（新增/真修好/新退役）——分数变化必须能区分
+  // 「真修好了」与「被静音了」，两者健康度含义相反。本次快照尚未写入，latestRun 即上一次。
+  var runDiff = null;
+  try {
+    var prevRun = latestRun(facts.home);
+    if (prevRun) {
+      runDiff = diffRuns(prevRun, {
+        at: new Date().toISOString(), score: sc.total,
+        findings: kept.map(function (f) { return { fp: f.fp, ruleId: f.ruleId, severity: f.severity, title: f.title || '' }; }),
+        retired: retired.map(function (f) { return f.fp; }),
+      });
+    }
+  } catch (e) { runDiff = null; }
+  var report = renderReport(facts, kept, sc, { retired: retired, attr: attr, version: pkgVersion, self: self, diff: runDiff });
   return { facts: facts, findings: kept, retired: retired, allFindings: findings, score: sc, attribution: attr, report: report, self: self, rubricVersion: sc.rubricVersion };
 }

@@ -63,6 +63,7 @@ var USAGE = [
   '',
   '误报记档：',
   '  dsh-healthkit --retire <指纹或规则号> --reason "原因"   （原因必填）',
+  '  dsh-healthkit --unretire <指纹或规则号>              撤销记档（重新计分）',
   '  dsh-healthkit --list-retired',
   '',
   '清理（默认只预览，永不直删）：',
@@ -106,6 +107,22 @@ if (has('findings') || has('explain') || has('plan')) {
     else console.log(res2.summary);
     process.exit(res2 && res2.found === false ? 2 : 0);
   } catch (e) { console.error('failed: ' + e.message); process.exit(1); }
+}
+
+if (has('unretire')) {
+  // 撤销记档（审计反哺 V08）：与 audit_retire action=restore 共用同一份存取逻辑。
+  var unKey = arg('unretire', null);
+  try {
+    var engU = await import('../src/engine.mjs');
+    var snapU = audit({ scenario: arg('scenario', 'general'), skipRetire: true });
+    var storeU = engU.loadRetirements(snapU.facts.home);
+    var exactU = storeU[unKey] ? [unKey] : Object.keys(storeU).filter(function (fp) { return fp.split('#')[0] === unKey; });
+    if (!exactU.length) { console.error('no retirement matches: ' + unKey); process.exit(2); }
+    for (var ui = 0; ui < exactU.length; ui++) delete storeU[exactU[ui]];
+    engU.saveRetirements(snapU.facts.home, storeU);
+    console.log('unretired: ' + exactU.join(', '));
+    process.exit(0);
+  } catch (e) { console.error('unretire failed: ' + e.message); process.exit(1); }
 }
 
 if (has('retire')) {

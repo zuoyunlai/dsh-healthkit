@@ -52,8 +52,14 @@ export function collect(ctxOpts) {
       try { ex2 = fs.existsSync(t2); } catch (e) { ex2 = false; }
       localDeps.push({ dep: d2, spec: String(spec2), target: t2, exists: ex2 });
     }
+    // R23 判据（审计反哺 V07）：bundle 是否声明 dsh.bundle——文件系统的事在采集层做完，
+    // 规则层只读事实。可读但缺 dsh.bundle 的才算；读不到的（未安装）不算，与原语义一致。
+    var noManifest = third.filter(function (b) {
+      var pj = readJson(path.join(dir, 'node_modules', b, 'package.json'), null);
+      return !!(pj && !(pj.dsh && pj.dsh.bundle));
+    });
     facts.profiles.push({
-      name: name, dir: dir, deps: deps, bundles: bundles, thirdPartyBundles: third,
+      name: name, dir: dir, deps: deps, bundles: bundles, thirdPartyBundles: third, noManifestBundles: noManifest,
       bundlesMissingFromDeps: missing,
       depsNotBundled: notBundledRaw.filter(function (d) {
         var j = readJson(path.join(dir, 'node_modules', d, 'package.json'), null);
