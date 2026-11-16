@@ -1,5 +1,20 @@
 # CHANGELOG
 
+## 0.11.1 — 2026-11-16
+
+### 修：宿主重复触发 inject 回调时，面板会挂两遍
+
+- **现象**：真宿主 `plugin-status.json` 里 `panel.attempts` 三条路由全报
+  `duplicate exact route`、`routes: 0`。面板看着能用——因为对外服务的是**另一份**挂载；
+  插件自己这一份一条也没挂上。
+- **根因**：`startPanel` 的幂等判断写在 `state.panel.ok` 上，而这个值要等动态
+  `import('./src/panel.mjs')` 完成之后才置真。宿主在服务重发布时会把 inject 回调再唤一次，
+  两次回调都在 import 完成**之前**通过判断，于是各挂一遍，第二次全撞 duplicate。
+  工具注册同理——只是真宿主里 tools 的回调恰好只来一次，没暴露。
+- **修法**：面板另立一个**同步**的 `panelMounting` 旗，回调进来第一行就置上（失败时放开以便重试）；
+  `registerAll` 改以「本轮已经注册过工具」为幂等条件。
+- **回归**：`test/apply-inject.mjs` 新增一段——让 inject 回调触发两次，路由必须仍只有 3 条。
+
 ## 0.11.0 — 2026-11-16
 
 ### 审计报告第四批（生态位）：三件事全部落地

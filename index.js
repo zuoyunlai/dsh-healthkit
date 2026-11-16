@@ -1082,7 +1082,11 @@ export function apply(ctx, config) {
     notes: [],
   });
 
+  // 宿主会在服务重发布时重复触发 inject 回调（同一 apply 里回调多次）。
+  // 重复注册会让工具名撞车、面板路由撞 duplicate，所以这两处都做成幂等：
+  // 第一次成功进来的就记账，后续直接返回。
   const registerAll = (toolCtx) => {
+    if (registered.length) return; // 已经注册过一轮，别再注册第二遍
     state.toolsReady = true;
     let tools = null;
     try { tools = toolCtx.tools; } catch (e) { failures.push('read toolCtx.tools: ' + msg(e)); return; }
@@ -1134,16 +1138,24 @@ export function apply(ctx, config) {
   // 'cannot get property "register" without inject'，面板静默挂不上
   // （工具面正常，只有 status.panel.ok=false）。必须 injected.get('webServer')。
   state.panel = { ok: false, reason: 'pending' };
+  // 竞态：inject 回调可能在动态 import 完成前再次触发。只判 state.panel.ok 挡不住
+  // ——那时 ok 还是 false，两次 import 会各挂一遍，第二次全撞 duplicate
+  // （2026-11-16 真宿主实测：status.panel.attempts 三条全 duplicate、routes=0）。
+  // 所以另立一个同步的 mounting 旗，第一行就置上。
+  let panelMounting = false;
   const startPanel = (ws) => {
-    if (state.panel && state.panel.ok) return; // inject 可能因服务重发布回调多次
+    if (panelMounting || (state.panel && state.panel.ok)) return;
+    panelMounting = true;
     Promise.resolve()
       .then(() => import('./src/panel.mjs'))
       .then((m) => {
         const rep = m.registerPanel(ws);
+        panelMounting = false;
         state.panel = rep;
         writeStatus({ panel: rep, notes });
       })
       .catch((e) => {
+        panelMounting = false; // 失败允许下一次回调重试
         state.panel = { ok: false, reason: msg(e) };
         writeStatus({ panel: state.panel });
       });
