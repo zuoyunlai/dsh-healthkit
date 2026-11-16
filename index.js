@@ -19,7 +19,9 @@ import { resolveReportPath } from './src/reportpath.mjs';
 
 export const name = 'dsh-healthkit';
 
-const VERSION = '0.4.1';
+// 版本号只有一处真源：package.json。
+// 2026-11-16 踩过：手写常量忘了跟着改，plugin-status.json 报 0.4.1 而包里已是 0.4.3。
+const VERSION = JSON.parse(fs.readFileSync(new URL('./package.json', import.meta.url), 'utf8')).version;
 
 function homeDir() { return process.env.DSH_HOME || path.join(os.homedir(), '.dsh'); }
 function statusPath() { return path.join(homeDir(), 'dsh-auditkit', 'plugin-status.json'); }
