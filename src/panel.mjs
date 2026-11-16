@@ -1,13 +1,13 @@
-// PC 管家式只读面板。
+// PC 管家式只读面板（Host 半边：网页面板 + JSON API）。
 //
-// 立场和工具一致：面板只展示、只读、不写配置。GET 请求不产生任何写盘副作用
-// （不记账、不改状态），预取/刷新/重放都安全。
-//
+// 立场和工具一致：面板只展示、只读、不写配置。GET 不记账、不写状态。
 // 宿主 API：ctx.inject(['webServer'], ws => ws.register({ kind, path, handler }))
-// handler 是 Node 的 (req, res)。prefix 路由自己剥路径尾段。
 //
-// 2026-11-16 教训：前端最初用字符串拼 HTML + 手写转义，生成出来的 JS 里
-// \" 被吃成 "，整段脚本语法错误、页面空白。改成 DOM API 组装，不再拼标签。
+// 2026-11-16 三次教训：
+//   ① 字符串拼 HTML 手写转义 → 生成 JS 里 \" 被吃 → 整段脚本语法错、页面空白。
+//   ② 侧边栏 iframe 不给脚本执行权 → 依赖 <script> 的面板在侧边栏里永远白屏。
+//   ③ 只给分数不给原因 → 面板没用。现在每条问题带维度、证据、测得值、修法，
+//      另给「修复顺序」与「优化建议」，折叠用原生 <details>（无脚本也能展开）。
 import { audit } from './engine.mjs';
 import { stats } from './history.mjs';
 import { analyze as trimAnalyze } from './trim.mjs';
@@ -15,6 +15,7 @@ import { scan as cleanScan } from './clean.mjs';
 
 const PREFIX = '/dsh-healthkit-panel';
 const CACHE_MS = 60 * 1000;
+const SEV_ORDER = { P0: 0, P1: 1, P2: 2, INFO: 3 };
 
 let cache = { at: 0, data: null };
 
@@ -35,44 +36,122 @@ function loopbackOnly(req) {
   return a === '127.0.0.1' || a === '::1' || a === '::ffff:127.0.0.1' || a === '';
 }
 
+function clip(v, max) {
+  try {
+    const s = typeof v === 'string' ? v : JSON.stringify(v);
+    if (!s || s === '{}' || s === '[]') return '';
+    return s.length > max ? s.slice(0, max) + '…' : s;
+  } catch (e) { return ''; }
+}
+
+function headlineOf(by, score, count) {
+  if (by.P0 > 0) return '有 ' + by.P0 + ' 条 P0 压着总分封顶，先处理它们';
+  if (!count) return '没发现未解决的问题';
+  if (score < 6) return '问题较多，按下表顺序修见效最快';
+  if (score < 8) return '整体可用，还有几处该收的尾巴';
+  return '整体健康，剩下的是打磨项';
+}
+
 export function collectSummary() {
   const now = Date.now();
   if (cache.data && now - cache.at < CACHE_MS) return cache.data;
 
   const r = audit({ scenario: 'general' });
-  const order = { P0: 0, P1: 1, P2: 2, INFO: 3 };
   const by = { P0: 0, P1: 0, P2: 0, INFO: 0 };
   r.findings.forEach((f) => { if (by[f.severity] !== undefined) by[f.severity] += 1; });
-  const h = stats({ days: 30 });
+
+  const sorted = r.findings.slice().sort((a, b) => {
+    const da = SEV_ORDER[a.severity] === undefined ? 9 : SEV_ORDER[a.severity];
+    const db = SEV_ORDER[b.severity] === undefined ? 9 : SEV_ORDER[b.severity];
+    return da - db;
+  });
+
+  // 每条问题：是什么、在哪、为什么（根因）、怎么修
+  const items = sorted.map((f) => ({
+    fp: f.fp,
+    ruleId: f.ruleId,
+    severity: f.severity,
+    dimension: f.dimension || '',
+    title: f.title || '',
+    target: f.target || '',
+    confidence: f.confidence || 'uncertain',
+    advisory: !!f.advisory,
+    fixHint: f.fixHint || '',
+    evidence: (f.evidence || []).slice(0, 4).map((x) => clip(x, 160)),
+    measured: clip(f.measured, 320),
+  }));
+
+  // 修复顺序：先解 P0 封顶，再按单条增量排
+  const at = r.attribution || {};
+  const plan = {
+    base: typeof at.stage2Base === 'number' ? at.stage2Base : r.score.total,
+    potentialAll: typeof at.potentialAll === 'number' ? at.potentialAll : r.score.total,
+    capped: !!at.capped,
+    stage1: at.stage1
+      ? {
+          count: at.stage1.count || 0,
+          from: at.stage1.from,
+          to: at.stage1.to,
+          delta: at.stage1.delta || 0,
+          items: (at.stage1.items || []).slice(0, 8).map((x) => clip(x, 180)),
+        }
+      : null,
+    rows: (at.rows || []).slice(0, 10).map((x) => ({
+      ruleId: x.ruleId,
+      severity: x.severity || '',
+      title: x.title || '',
+      target: x.target || '',
+      delta: x.delta || 0,
+    })),
+  };
+
+  // 清理：可回收多少、按什么分组
   let clean = null;
   try {
     const s = cleanScan({});
-    clean = { candidates: (s.groups || []).length, bytes: s.totalBytes || 0 };
+    clean = {
+      bytes: s.totalBytes || 0,
+      groups: (s.groups || []).map((g) => ({
+        id: g.id,
+        label: g.label || '',
+        risk: g.risk || 'safe',
+        reason: clip(g.reason || '', 120),
+        bytes: g.bytes || 0,
+        files: g.files || 0,
+      })),
+    };
   } catch (e) { clean = null; }
+
+  // 优化建议：装载面瘦身
   let trim = null;
   try {
     const t = trimAnalyze(r.facts);
-    trim = { served: t.served, maxBundles: t.maxBundles, groups: t.groups.length };
+    trim = {
+      served: t.served,
+      maxBundles: t.maxBundles,
+      groups: (t.groups || []).map((g) => ({ tag: g.tag, count: g.count, keep: g.keep, drop: g.drop })),
+      memory: (t.memory || []).map((m) => m.name),
+      suggestions: (t.suggestions || []).slice(0, 6),
+    };
   } catch (e) { trim = null; }
 
-  const top = r.findings
-    .slice()
-    .sort((a, b) => (order[a.severity] === undefined ? 9 : order[a.severity]) - (order[b.severity] === undefined ? 9 : order[b.severity]))
-    .slice(0, 8)
-    .map((f) => ({ severity: f.severity, ruleId: f.ruleId, title: f.title || '', fp: f.fp, fixHint: f.fixHint || '' }));
-
+  const h = stats({ days: 30 });
   const data = {
     at: new Date().toISOString(),
     score: r.score.total,
     raw: r.score.raw,
     band: r.score.band,
-    findings: r.findings.length,
+    count: r.findings.length,
+    findings: r.findings.length, // 兼容旧字段
     retired: r.retired.length,
     p0: by.P0, p1: by.P1, p2: by.P2, info: by.INFO,
+    headline: headlineOf(by, r.score.total, r.findings.length),
     trend: { runs: h.runs, daysTracked: h.daysTracked, latest: h.latest, delta: h.delta, sparkline: h.sparkline || '' },
+    items,
+    plan,
     clean,
     trim,
-    top,
+    retiredList: r.retired.map((f) => ({ fp: f.fp, ruleId: f.ruleId, title: f.title || '' })),
   };
   cache = { at: now, data };
   return data;
@@ -82,34 +161,37 @@ const CSS = [
   ':root{--bg:#0f1419;--card:#171d24;--line:#242d38;--ink:#e6edf3;--dim:#8b98a5;--ok:#3fb950;--warn:#d29922;--bad:#f85149;--accent:#58a6ff}',
   '*{box-sizing:border-box}',
   'body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.55 -apple-system,"Segoe UI",system-ui,sans-serif;padding:20px}',
-  'header{display:flex;align-items:baseline;gap:12px;margin-bottom:18px}',
+  'header{display:flex;align-items:baseline;gap:12px;margin-bottom:10px}',
   'h1{font-size:18px;margin:0;font-weight:600}',
+  'h2{font-size:13px;margin:20px 0 8px;color:var(--dim);font-weight:600;letter-spacing:.02em}',
   'button,a.btn{background:var(--card);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:6px 12px;cursor:pointer;font-size:13px;text-decoration:none}',
   'button:hover,a.btn:hover{border-color:var(--accent)}',
-  '.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:14px;align-items:start}',
-  '.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px}',
+  '.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px;align-items:start}',
+  '.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px}',
   '.k{color:var(--dim);font-size:12px;margin-bottom:6px}',
-  '.v{font-size:28px;font-weight:700;letter-spacing:-.5px}',
+  '.v{font-size:26px;font-weight:700;letter-spacing:-.5px}',
   '.v small{font-size:13px;font-weight:400;color:var(--dim)}',
-  '.row{display:flex;gap:10px;align-items:center;margin-top:8px;flex-wrap:wrap}',
-  '.sev{display:inline-block;min-width:52px;font-size:11px;font-weight:700;padding:1px 6px;border-radius:5px;text-align:center}',
+  '.row{display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap}',
+  '.sev{display:inline-block;min-width:46px;font-size:11px;font-weight:700;padding:1px 6px;border-radius:5px;text-align:center}',
   '.s-P0{background:#3d1519;color:var(--bad)}',
   '.s-P1{background:#3a2d12;color:var(--warn)}',
   '.s-P2{background:#12243a;color:var(--accent)}',
   '.s-INFO{background:#1b2229;color:var(--dim)}',
-  '.item{display:flex;gap:10px;padding:8px 0;border-bottom:1px solid var(--line);align-items:flex-start}',
-  '.item:last-child{border-bottom:0}',
-  '.fp{color:var(--dim);font-size:11px;font-family:ui-monospace,Consolas,monospace}',
   '.dim{color:var(--dim);font-size:12px}',
+  '.fp{color:var(--dim);font-size:11px;font-family:ui-monospace,Consolas,monospace}',
+  'details{border:1px solid var(--line);border-radius:10px;padding:8px 10px;margin-bottom:8px;background:var(--card)}',
+  'details[open]{border-color:#31405a}',
+  'summary{cursor:pointer;list-style:none;display:flex;gap:8px;align-items:flex-start}',
+  'summary::-webkit-details-marker{display:none}',
+  'summary .t{font-size:13px;line-height:1.45}',
+  '.body{margin-top:8px;padding-top:8px;border-top:1px solid var(--line);font-size:12px;color:var(--ink)}',
+  '.kv{margin:6px 0}',
+  '.kv b{color:var(--dim);font-weight:600;font-size:11px;display:block;margin-bottom:2px}',
+  'pre{margin:2px 0 0;white-space:pre-wrap;word-break:break-all;font-family:ui-monospace,Consolas,monospace;font-size:11px;color:var(--dim)}',
+  'ol,ul{margin:4px 0;padding-left:18px}',
+  'li{margin:3px 0;font-size:12px}',
   'footer{margin-top:18px;color:var(--dim);font-size:12px}',
 ].join('\n');
-// ---- 服务端渲染：面板不依赖任何客户端 JS ----
-//
-// 2026-11-16 真机反馈：系统浏览器能看，DSH 侧边栏 iframe 看不到内容。
-// 响应头里没有任何 X-Frame-Options / CSP，所以不是被 header 拦，而是侧边栏 iframe
-// 的沙箱不给脚本执行权——而这个面板原本全靠 <script> 渲染，于是整页空白。
-// 改成把数据直接渲染进 HTML（数据本来就在服务端算好），并用 <meta refresh> 自刷新，
-// 这样在禁脚本的沙箱里也能正常显示。
 
 const esc = (s) => String(s == null ? '' : s)
   .replace(/&/g, '&amp;')
@@ -120,13 +202,28 @@ const esc = (s) => String(s == null ? '' : s)
 const SEVS = ['P0', 'P1', 'P2', 'INFO'];
 
 function sevBadge(x) {
-  return '<span class="sev s-' + x + '">' + x + '</span>';
+  return '<span class="sev s-' + esc(x) + '">' + esc(x) + '</span>';
 }
 
 function mbOf(n) {
   if (typeof n !== 'number' || !isFinite(n) || n <= 0) return '0 B';
   if (n >= 1073741824) return (n / 1073741824).toFixed(1) + ' GB';
   return (n / 1048576).toFixed(1) + ' MB';
+}
+
+function findingBlock(it) {
+  const rows = [];
+  rows.push('<div class="kv"><b>维度</b>' + esc(it.dimension || '未分类') +
+    (it.advisory ? ' · <span class="dim">建议项（不计分）</span>' : '') +
+    ' · 置信度 ' + esc(it.confidence) + '</div>');
+  if (it.target) rows.push('<div class="kv"><b>位置</b>' + esc(it.target) + '</div>');
+  if (it.evidence && it.evidence.length) {
+    rows.push('<div class="kv"><b>证据</b><pre>' + it.evidence.map(esc).join('\n') + '</pre></div>');
+  }
+  if (it.measured) rows.push('<div class="kv"><b>测到的值</b><pre>' + esc(it.measured) + '</pre></div>');
+  rows.push('<div class="kv"><b>怎么修</b>' + (it.fixHint ? esc(it.fixHint) : '<span class="dim">该规则没有固定修法，按证据自行判断</span>') + '</div>');
+  rows.push('<div class="fp">' + esc(it.fp) + '</div>');
+  return rows.join('');
 }
 
 export function pageHtml(data) {
@@ -139,27 +236,63 @@ export function pageHtml(data) {
   const delta = typeof d.trend.delta === 'number' ? d.trend.delta : null;
   const trendTxt = d.trend.latest + (delta === null ? '（首次）' : (delta >= 0 ? ' (+' + delta + ')' : ' (' + delta + ')'));
   const cleanTxt = d.clean ? mbOf(d.clean.bytes) : '未知';
-  const cleanSub = d.clean ? d.clean.candidates + ' 组可清理（先预览再生效）' : '';
+  const cleanSub = d.clean ? d.clean.groups.length + ' 组可清理' : '';
   const trimV = d.trim ? d.trim.served + ' / ' + d.trim.maxBundles : '—';
-  const trimSub = d.trim ? d.trim.groups + ' 组能力冗余' : '';
-
-  const items = d.top.length
-    ? d.top.map(function (x) {
-        return '<div class="item">' + sevBadge(x.severity) +
-          '<div><b>' + esc(x.ruleId) + '</b> ' + esc(x.title) +
-          (x.fixHint ? '<div class="dim">' + esc(x.fixHint) + '</div>' : '') +
-          '<div class="fp">' + esc(x.fp) + '</div></div></div>';
-      }).join('')
-    : '<div class="dim">没有未解决的问题</div>';
+  const trimSub = d.trim ? d.trim.groups.length + ' 组能力冗余' : '';
 
   const cards = [
     '<div class="card"><div class="k">总分（10 分制）</div><div class="v">' + d.score + '</div><div class="row">' + sevRow + '</div></div>',
-    '<div class="card"><div class="k">分档</div><div class="v">' + esc(d.band) + '</div><div class="dim">更新 ' + esc(String(d.at).replace('T', ' ').slice(0, 19)) + '</div></div>',
-    '<div class="card"><div class="k">未解决 / 已退役</div><div class="v">' + d.findings + ' <small>/ ' + d.retired + '</small></div></div>',
+    '<div class="card"><div class="k">分档</div><div class="v">' + esc(d.band) + '</div><div class="dim">' + esc(d.headline) + '</div></div>',
+    '<div class="card"><div class="k">未解决 / 已退役</div><div class="v">' + d.count + ' <small>/ ' + d.retired + '</small></div></div>',
     '<div class="card"><div class="k">最新分 / 记账</div><div class="v">' + esc(trendTxt) + '</div><div class="dim">' + d.trend.runs + ' 次 / ' + d.trend.daysTracked + ' 天</div><div class="dim" style="font-family:ui-monospace,monospace;font-size:16px">' + esc(d.trend.sparkline || '—') + '</div></div>',
     '<div class="card"><div class="k">可清理空间</div><div class="v">' + esc(cleanTxt) + '</div><div class="dim">' + esc(cleanSub) + '</div></div>',
     '<div class="card"><div class="k">服务插件 / 上限</div><div class="v">' + esc(trimV) + '</div><div class="dim">' + esc(trimSub) + '</div></div>',
   ].join('');
+
+  // 问题清单：每条可展开看根因与修法
+  const issues = d.items.length
+    ? d.items.map(function (it) {
+        return '<details><summary>' + sevBadge(it.severity) +
+          '<div class="t"><b>' + esc(it.ruleId) + '</b> ' + esc(it.title) +
+          '<div class="dim">' + esc(it.dimension || '') + (it.fixHint ? ' · ' + esc(it.fixHint.slice(0, 46)) : '') + '</div></div>' +
+          '</summary><div class="body">' + findingBlock(it) + '</div></details>';
+      }).join('')
+    : '<div class="dim">没有未解决的问题</div>';
+
+  // 修复顺序
+  const planLines = [];
+  if (d.plan.stage1) {
+    planLines.push('<li><b>第一步｜清掉 ' + d.plan.stage1.count + ' 条 P0</b>：' +
+      d.plan.stage1.from + ' → ' + d.plan.stage1.to + '（' + (d.plan.stage1.delta > 0 ? '+' : '') + d.plan.stage1.delta + (d.plan.capped ? '，解除封顶' : '') + '）' +
+      (d.plan.stage1.items.length ? '<ul>' + d.plan.stage1.items.map(function (x) { return '<li>' + esc(x) + '</li>'; }).join('') + '</ul>' : '') + '</li>');
+  } else {
+    planLines.push('<li><b>第一步</b>：没有 P0，不需要解封顶</li>');
+  }
+  if (d.plan.rows.length) {
+    planLines.push('<li><b>第二步｜以 ' + d.plan.base + ' 为基准，单条增量</b>（互不叠加）<ul>' +
+      d.plan.rows.map(function (r) {
+        return '<li>' + (r.delta > 0 ? '+' : '') + r.delta + ' · <b>' + esc(r.ruleId) + '</b> ' + esc(r.title) + (r.target ? '（' + esc(r.target) + '）' : '') + '</li>';
+      }).join('') + '</ul></li>');
+  }
+  planLines.push('<li><b>全部修完</b> → ' + d.plan.potentialAll + ' / 10</li>');
+
+  // 优化建议
+  const advice = [];
+  if (d.trim && d.trim.suggestions.length) {
+    d.trim.suggestions.forEach(function (s) { advice.push('<li>' + esc(s) + '</li>'); });
+  }
+  if (d.clean && d.clean.groups.length) {
+    advice.push('<li>可清理 ' + esc(mbOf(d.clean.bytes)) + '：' +
+      d.clean.groups.map(function (g) { return esc(g.label) + ' ' + mbOf(g.bytes); }).join('、') +
+      '（先 audit_clean 预览，执行会移入回收区，7 天内可还原）</li>');
+  }
+  if (!advice.length) advice.push('<li class="dim">暂时没有优化建议</li>');
+
+  const retiredBlock = d.retiredList.length
+    ? '<details><summary><b>已退役 ' + d.retiredList.length + ' 条</b><span class="dim">（误报记档，不再计分）</span></summary><div class="body">' +
+      d.retiredList.map(function (x) { return '<div class="kv">' + esc(x.ruleId) + ' · ' + esc(x.title) + '<div class="fp">' + esc(x.fp) + '</div></div>'; }).join('') +
+      '</div></details>'
+    : '';
 
   return [
     '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">',
@@ -168,9 +301,13 @@ export function pageHtml(data) {
     '<title>DSH 体检</title><style>' + CSS + '</style></head><body>',
     '<header><h1>DSH 体检</h1><span class="dim">只读 · 不写配置 · 不联网</span>',
     '<span style="flex:1"></span><a class="btn" href="?r=' + Date.now() + '">刷新</a></header>',
+    '<div class="dim" style="margin-bottom:14px">' + esc(d.headline) + ' · 更新 ' + esc(String(d.at).replace('T', ' ').slice(0, 19)) + '</div>',
     '<div class="grid">' + cards + '</div>',
-    '<div class="card" style="margin-top:14px"><div class="k">先看这些（按严重度）</div>' + items + '</div>',
-    '<footer>数据来自本机 ~/.dsh；面板只读，清理与修复请走 audit_clean / CLI。每分钟自动刷新；数据缓存 60 秒。</footer>',
+    '<h2>问题清单（点开看根因与修法）</h2>' + issues,
+    '<h2>修复顺序</h2><div class="card"><ol>' + planLines.join('') + '</ol></div>',
+    '<h2>优化建议</h2><div class="card"><ul>' + advice.join('') + '</ul></div>',
+    retiredBlock,
+    '<footer>数据来自本机 ~/.dsh；面板只读，清理与修复请走 audit_clean / CLI。每分钟自动刷新，数据缓存 60 秒。</footer>',
     '</body></html>',
   ].join('\n');
 }

@@ -48,7 +48,14 @@ const reqRemote = { url: '/dsh-healthkit-panel', socket: { remoteAddress: '192.1
   const d = JSON.parse(res.body);
   assert.equal(typeof d.score, 'number');
   assert.ok(d.band);
-  assert.ok(Array.isArray(d.top));
+  assert.ok(Array.isArray(d.items), 'items 应为数组');
+  assert.ok(d.items.length > 0, '应至少有一条问题');
+  const first = d.items[0];
+  assert.ok(first.ruleId && first.severity && first.title, '条目要有 ruleId/severity/title');
+  assert.ok(typeof first.dimension === 'string', '条目要有维度（根因分类）');
+  assert.ok(typeof first.fixHint === 'string', '条目要有修法');
+  assert.ok(d.plan && Array.isArray(d.plan.rows), '要有修复顺序');
+  assert.ok(d.headline, '要有一句话结论');
   assert.equal(typeof d.p0, 'number');
 }
 
