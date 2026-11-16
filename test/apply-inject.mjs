@@ -53,7 +53,7 @@ const statusPath = path.join(home, 'dsh-healthkit', 'plugin-status.json');
 assert.ok(fs.existsSync(statusPath), 'apply 应写出 plugin-status.json');
 const st = JSON.parse(fs.readFileSync(statusPath, 'utf8'));
 
-assert.equal(st.registered.length, 15, '15 个工具都应注册，实得 ' + st.registered.length + ': ' + st.registered.join(','));
+assert.equal(st.registered.length, 16, '16 个工具都应注册，实得 ' + st.registered.length + ': ' + st.registered.join(','));
 for (const n of ['audit_run', 'audit_report', 'audit_clean', 'audit_trend', 'audit_findings', 'audit_explain', 'audit_plan', 'audit_trim', 'audit_capabilities', 'audit_retire', 'audit_diff', 'audit_verify', 'audit_check', 'audit_recommend']) {
   assert.ok(st.registered.includes(n), '缺工具 ' + n);
 }
@@ -90,4 +90,4 @@ await new Promise((r) => setTimeout(r, 800));
 assert.equal(routes2.length, 3, 'inject 回调重复触发时也只能挂 3 条路由，实得 ' + routes2.length + '：' + routes2.join(','));
 
 fs.rmSync(home, { recursive: true, force: true });
-console.log('apply-inject: 通过（15 工具 · 面板 3 路由 · 重复回调不重复挂 · failures 空）');
+console.log('apply-inject: 通过（16 工具 · 面板 3 路由 · 重复回调不重复挂 · failures 空）');

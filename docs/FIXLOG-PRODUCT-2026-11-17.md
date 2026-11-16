@@ -105,12 +105,28 @@ score=9.81/10 (raw 9.81, band 良好, P0=0, retired=3)
 | 用户遥测 / 使用统计 | 与「无遥测」信任状冲突，单人维护也消费不了聚合数据 |
 | 再重做面板 / 再来一次面板评审 | 已有两轮重做 + 一份面板评审核实台账，相对用户量已过度投资 |
 
-## 七、未落地（留给下一轮）
+## 七、补齐（同日第二批）
 
-- **周报的定时投递**：`audit_digest` 已经能算出「有变化才发」，但把它挂到 `automation` 的
-  定时任务上属于宿主侧配置，本轮没动（要动就顺手把 `--source automation` 一起接上）。
-- **首次价值信号**（报告末尾问一句「这条你之前知道吗」）：需要交互入口，且会改报告格式，
-  本轮没做——它是「值不值得装」的唯一真指标，值得单独一轮。
+### 7a 周报定时投递（已接上）
+
+- 宿主里本来就有一条「每周 DSH 体检」自动化（`automation_40a9d1f2`，周一 09:00 Asia/Shanghai，
+  在 `default-workspace`），但它的 prompt 是旧的「跑一遍体检并汇报分数」，而且**从没跑过**
+  （下次触发 11-23 09:00）。已改成**差异驱动**：
+  - 调 `audit_digest`；`changed=false` 只回一句「本周无变化：<headline>」；
+    `changed=true` 把 digest 正文原样回（含「上次说该修的现在怎样」）；
+  - 权限从 `workspace-write` 降到 **`read-only`**，并写死禁令（不许 clean apply/purge、
+    不许改配置、不许装卸插件、不许写文件）——周报只负责「有变化时说出来」。
+- 只读的代价：周报不记账（账本因此不会被「每周同一分」灌噪声），基线由用户/agent 手动跑的那次推进。
+
+### 7b 首次价值信号（已落地）
+
+- 新工具 **`audit_feedback`**（+ CLI `--feedback <fp>=known|unknown`）：
+  对某条发现回答「这条我原先知道 / 不知道」，**只记本机**（`$DSH_HOME/dsh-healthkit/feedback.jsonl`），
+  一行一条、永不外发——插件仍然零遥测。
+- 口径：同一条发现（fp）只保留最后一次回答；`firstValueRate = 不知道 / 已回答`。
+- 为什么需要它：这是「值不值得装」的唯一真指标，而现有任何机制都没在收。
+  低于 30% 时 `audit_digest` 会直接点出来「它多在你已经知道的事上说话」。
+- 周报只在**真的回答过**时带这一行，不占空版面。
 
 ## 八、复跑
 
@@ -118,5 +134,6 @@ score=9.81/10 (raw 9.81, band 良好, P0=0, retired=3)
 node bin/audit.mjs --no-record            # 首屏：结论 + 3 条 + INFO 收走
 node bin/audit.mjs --no-record --digest   # 差异周报（本机当前会输出「没有变化」）
 node bin/audit.mjs --no-record --verbose  # 全量发现
-npm test                                  # 25 组
+node bin/audit.mjs --no-record --feedback R17=unknown   # 首次价值信号：这条我原先不知道
+npm test                                  # 27 组
 ```

@@ -40,9 +40,18 @@
 - `docs/COMPLEMENTARY.md` 进 npm `files`（此前这份「和 doctor 有什么不同」的答案不在包里）。
 - 工具表与 `--init` 文案同步到 15 个工具（`tools-shape` 有断言盯文案与实现一致）。
 
+### 补齐：周报定时投递 + 首次价值信号
+
+- 现有「每周 DSH 体检」自动化改成**差异驱动**（调 `audit_digest`，无变化只回一句），
+  权限从 workspace-write 降到 **read-only**，并写死禁令（不许 clean/改配置/装卸插件/写文件）。
+- 新工具 **`audit_feedback`**（+ CLI `--feedback <fp>=known|unknown`）：回答「这条我原先知不知道」，
+  **只记本机** `feedback.jsonl`、永不外发；同一 fp 只保留最后一次回答；
+  `firstValueRate = 不知道 / 已回答`，低于 30% 时 `audit_digest` 直接点出来。
+  这是「值不值得装」的唯一真指标，此前没有任何机制在收。
+
 ### 测试
 
-- 新增 `test/digest.mjs`（16 项断言）；`test/verify.mjs` 按新判据更新（P2 进清单、最多 3 条、
+- 新增 `test/digest.mjs`（16 项断言）、`test/feedback.mjs`（13 项断言）；`test/verify.mjs` 按新判据更新（P2 进清单、最多 3 条、
   只有 P2 时也有目标）；`tools-shape` / `apply-inject` / `init` 文案同步到 15 个工具。
 
 ## 未发布 — 架构审计反哺批（P0×2 · P1×7 · P2×5 全部落地）

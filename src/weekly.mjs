@@ -13,6 +13,7 @@
 import { latestRun, diffRuns } from './snapshot.mjs';
 import { checkPending } from './verify.mjs';
 import { headlineOf, countBySeverity, pickTopActions } from './digest.mjs';
+import { stats as feedbackStats, renderStats as renderFeedback } from './feedback.mjs';
 
 function currentRunShape(result) {
   return {
@@ -79,9 +80,20 @@ export function buildDigest(result, opts) {
     }
   } catch (e) { verify = null; }
 
+  // 首次价值信号（产品审计 §5）：只有用户真的回答过才出现，否则不占版面。
+  let feedback = null;
+  try {
+    const fs1 = feedbackStats(home);
+    if (fs1.answered > 0) feedback = { stats: fs1, text: renderFeedback(fs1) };
+  } catch (e) { feedback = null; }
+
   const top = pickTopActions(findings, o.limit || 3);
   const lines = [];
   lines.push('**' + headline + '**');
+  if (feedback) {
+    lines.push('');
+    lines.push(feedback.text);
+  }
   lines.push('');
   if (!changed) {
     lines.push('与上次相比：' + reason + '。本次不展开，避免把定时复述变成噪声。');
@@ -90,7 +102,7 @@ export function buildDigest(result, opts) {
       lines.push('仍待处理（' + top.length + ' 条最值得动的）：');
       top.forEach((f, i) => lines.push((i + 1) + '. [' + f.severity + '] `' + f.ruleId + '` ' + (f.title || '')));
     }
-    return { changed: false, headline: headline, reason: reason, verify: verify, lines: lines, topActions: top.length };
+    return { changed: false, headline: headline, reason: reason, verify: verify, lines: lines, topActions: top.length, feedback: feedback ? feedback.stats : null };
   }
 
   lines.push('与上次相比：' + reason + '。');
@@ -115,5 +127,5 @@ export function buildDigest(result, opts) {
       if (f.fixHint) lines.push('   → ' + String(f.fixHint).replace(/\s+/g, ' ').slice(0, 110));
     });
   }
-  return { changed: true, headline: headline, reason: reason, verify: verify, diff: diff, lines: lines, topActions: top.length };
+  return { changed: true, headline: headline, reason: reason, verify: verify, diff: diff, lines: lines, topActions: top.length, feedback: feedback ? feedback.stats : null };
 }

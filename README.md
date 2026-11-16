@@ -46,7 +46,7 @@ dsh plugin --profile <profile> add link:/path/to/dsh-healthkit
 开发期用 `link:`（符号链接，改源码重启宿主即生效）。`file:` 是拷贝，改源码不生效，
 得 `dsh plugin --profile <profile> install --force` 重装。装完重启宿主一次。
 
-## 十五个工具（查手册用，不必先读）
+## 十六个工具（查手册用，不必先读）
 
 | 工具 | 干什么 |
 | --- | --- |
@@ -55,6 +55,7 @@ dsh plugin --profile <profile> add link:/path/to/dsh-healthkit
 | `audit_clean` | 清理可再生垃圾：默认只预览，执行先移入回收区，7 天内可还原 |
 | `audit_trend` | 分数历史：次数、最新分与变化、均值、最好/最差、P0 未关、sparkline |
 | `audit_digest` | 差异驱动的周报摘要：与上次相比变了什么、上次说该修的现在怎样；没变化就一句话 |
+| `audit_feedback` | 首次价值信号：这条发现我原先知不知道（只记本机、不外发），用来算首次价值率 |
 | `audit_findings` | 问题清单（按严重度排序，带指纹与修法），可按 severity 过滤 |
 | `audit_explain` | 解释某一条：维度、证据、测到的值、置信度、修法 |
 | `audit_plan` | 修复顺序：先解 P0 封顶，再按单条增量排，给出全修完的终点 |

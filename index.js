@@ -82,6 +82,18 @@ const CLEAN_SCHEMA = {
   required: ['action', 'ok', 'summary'],
 };
 
+const FEEDBACK_SCHEMA = {
+  type: 'object',
+  properties: {
+    ok: { type: 'boolean' },
+    answered: { type: 'number' },
+    unknown: { type: 'number' },
+    firstValueRate: { type: 'number' },
+    summary: { type: 'string' },
+  },
+  required: ['ok', 'summary'],
+};
+
 const DIGEST_SCHEMA = {
   type: 'object',
   properties: {
@@ -533,6 +545,54 @@ export function buildTools(deps) {
         p0: num(s.p0),
         sparkline: s.sparkline || '',
         summary: renderStats(s),
+      };
+    },
+  },
+  {
+    name: 'audit_feedback',
+    description: '首次价值信号：对某条发现回答「这条我原先知道 / 不知道」，只记在本机（不联网、不外发），用来算这个插件的首次价值率。传 finding=fp 或规则号',
+    parameters: {
+      type: 'object',
+      properties: {
+        finding: { type: 'string', description: '发现的指纹 fp，或规则号（如 R17）' },
+        known: { type: 'boolean', description: 'true = 我原先就知道；false = 我原先不知道' },
+        note: { type: 'string', description: '可选备注（为什么不知道/为什么没用）' },
+      },
+      required: ['finding', 'known'],
+      additionalProperties: false,
+    },
+    output: {
+      schema: FEEDBACK_SCHEMA,
+      render(_args, v) { return text(v.summary); },
+    },
+    execute: async (args) => {
+      const a = args || {};
+      const key = String(a.finding || '').trim();
+      if (!key) return { ok: false, answered: 0, unknown: 0, firstValueRate: 0, summary: '要给 finding（fp 或规则号）。' };
+      const { audit } = await import('./src/engine.mjs');
+      const fb = await import('./src/feedback.mjs');
+      const r = audit({ scenario: 'general' });
+      const pool = (r.allFindings || []).concat(r.retired || []);
+      const hit = pool.find((f) => f.fp === key || f.ruleId === key);
+      if (!hit) {
+        return { ok: false, answered: 0, unknown: 0, firstValueRate: 0, summary: '没有匹配的发现：' + key + '（用 audit_findings 看 fp）' };
+      }
+      fb.append(r.facts.home, {
+        at: new Date().toISOString(),
+        fp: hit.fp,
+        ruleId: hit.ruleId,
+        severity: hit.severity,
+        title: hit.title || '',
+        known: a.known === true,
+        note: a.note ? String(a.note).slice(0, 200) : null,
+      });
+      const s = fb.stats(r.facts.home);
+      return {
+        ok: true,
+        answered: s.answered,
+        unknown: s.unknown,
+        firstValueRate: typeof s.firstValueRate === 'number' ? s.firstValueRate : 0,
+        summary: '已记下：`' + hit.ruleId + '` ' + (a.known === true ? '原先就知道' : '原先不知道') + '。\n' + fb.renderStats(s),
       };
     },
   },

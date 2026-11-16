@@ -57,6 +57,7 @@ var USAGE = [
   '  dsh-healthkit --json            只输出 JSON 摘要',
   '  dsh-healthkit --verbose         首屏结论 + 全量发现清单',
   '  dsh-healthkit --no-record       不记入账本（排查/试跑用）',
+  '  dsh-healthkit --feedback <fp>=known|unknown   首次价值信号：这条我原先知不知道',
   '  dsh-healthkit --source <s>      账本标记来源：human（缺省）/ agent / automation / ci',
   '  dsh-healthkit --why             只看「先修哪几条」',
   '  dsh-healthkit --links           看 link:/file: 依赖指向何处',
@@ -393,6 +394,23 @@ try {
   } catch (e) { /* 快照写失败不该让体检失败 */ }
   var factsOut = arg('dump-facts', null);
   if (factsOut) { fs.mkdirSync(path.dirname(factsOut), { recursive: true }); fs.writeFileSync(factsOut, JSON.stringify(result.facts, null, 2), 'utf8'); }
+  var fbArg = arg('feedback', null);
+  if (fbArg) {
+    var fbMod = await import('../src/feedback.mjs');
+    var parts = String(fbArg).split('=');
+    var key = parts[0];
+    var known = String(parts[1] || '').toLowerCase() === 'known';
+    var poolAll = (result.allFindings || []).concat(result.retired || []);
+    var hitFb = poolAll.filter(function (f) { return f.fp === key || f.ruleId === key; })[0];
+    if (!hitFb) { console.error('no finding matches: ' + key); process.exit(2); }
+    fbMod.append(result.facts.home, {
+      at: new Date().toISOString(), fp: hitFb.fp, ruleId: hitFb.ruleId,
+      severity: hitFb.severity, title: hitFb.title || '', known: known, note: null,
+    });
+    console.log('recorded: ' + hitFb.ruleId + ' = ' + (known ? 'known' : 'unknown'));
+    console.log(fbMod.renderStats(fbMod.stats(result.facts.home)));
+    process.exit(0);
+  }
   if (has('digest')) {
     var wk = await import('../src/weekly.mjs');
     var dg = wk.buildDigest(result, { limit: 3 });
