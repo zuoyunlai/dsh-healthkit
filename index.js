@@ -362,6 +362,11 @@ export function buildTools(deps) {
       const r = audit({ scenario: 'general' });
       const hist = await import('./src/history.mjs');
       hist.append(r, { scenario: 'general' });
+      // 也写待验清单：重启后开机核对的是「最近一次体检」的结论，audit_report 也是一次体检。
+      try {
+        const ver = await import('./src/verify.mjs');
+        ver.writePending(r, { home: r.facts.home });
+      } catch (e) { /* 待验清单写失败不该让体检失败 */ }
       const workspace = resolveWorkspace(exec);
       const target = resolveReportPath({
         out: args && args.out,
