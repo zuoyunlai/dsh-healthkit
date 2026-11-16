@@ -58,6 +58,21 @@ export function writeRun(result, opts) {
       }),
       retired: (result.retired || []).map(function (f) { return f.fp || f.ruleId; }),
     };
+    // 同毫秒内可能连写多次（先 audit_run 再 audit_diff）。
+    // 文件名加后缀只保证不覆盖，**顺序要靠 seq 字段**：
+    // 字典序里 '-' (0x2D) < '.' (0x2E)，'x-1.json' 会排在 'x.json' 前面，
+    // 于是「上一次/下一次」反了。所以给每份快照一个单调递增的 seq，排序时用它。
+    let seq = 0;
+    try {
+      for (const f of fs.readdirSync(dir).filter(function (x) { return /\.json$/.test(x); })) {
+        try {
+          const j = JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8'));
+          if (j.stamp === stamp && typeof j.seq === 'number' && j.seq >= seq) seq = j.seq + 1;
+        } catch (e) { /* 坏快照跳过 */ }
+      }
+    } catch (e) { /* 目录还不存在 */ }
+    rec.seq = seq;
+
     let p = path.join(dir, stamp + '.json');
     let n = 1;
     while (fs.existsSync(p)) {           // 极端情况（同毫秒）也不覆盖
@@ -91,17 +106,40 @@ export function listRuns(home) {
     for (const f of fs.readdirSync(dir).filter(function (x) { return /\.json$/.test(x); })) {
       try {
         const j = JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8'));
-        out.push({ file: f, at: j.at, stamp: j.stamp, score: j.score, scenario: j.scenario, count: (j.findings || []).length });
+        out.push({ file: f, at: j.at, stamp: j.stamp, seq: j.seq || 0, score: j.score, scenario: j.scenario, count: (j.findings || []).length });
       } catch (e) { /* 坏快照跳过 */ }
     }
   } catch (e) { /* 没有 runs 目录 */ }
-  return out.sort(function (a, b) { return String(a.stamp).localeCompare(String(b.stamp)); });
+  // 按**记录里的时间**排序，不按文件名。
+  //
+  // 2026-11-16 踩过：文件名在同毫秒冲突时会加 '-1' 后缀，
+  // 而字典序里 '-' (0x2D) < '.' (0x2E) ⇒ 'x-1.json' 排在 'x.json' **前面**，
+  // 于是「上一次」变成了「下一次」，差异归因整个反了。
+  // 本机因为两次写不在同一毫秒而没暴露，CI 上稳定复现。
+  return out.sort(function (a, b) {
+    const d = String(a.at).localeCompare(String(b.at));
+    if (d !== 0) return d;
+    const ds = (a.seq || 0) - (b.seq || 0);   // 同毫秒按写入顺序
+    if (ds !== 0) return ds;
+    return String(a.file).localeCompare(String(b.file));
+  });
 }
 
-export function loadRun(home, stamp) {
+// 按**文件名**加载（stamp+'.json' 或带 '-1' 后缀的那种）。
+// 为什么不能只按 stamp 加载：同毫秒写入时文件会是 '<stamp>.json' 与 '<stamp>-1.json' 两个，
+// 按 stamp 找只能命中第一个，于是「第二次写入」永远读不出来，差异归因就少一条。
+export function loadRunByFile(home, file) {
+  if (!file) return null;
   try {
-    return JSON.parse(fs.readFileSync(path.join(runsDir(home), stamp + '.json'), 'utf8'));
+    return JSON.parse(fs.readFileSync(path.join(runsDir(home), file), 'utf8'));
   } catch (e) { return null; }
+}
+
+// 按 stamp 加载；同 stamp 有多份时取**最后写入**的那份（seq 最大）。
+export function loadRun(home, stamp) {
+  const all = listRuns(home).filter(function (r) { return r.stamp === stamp; });
+  if (!all.length) return null;
+  return loadRunByFile(home, all[all.length - 1].file);
 }
 
 // 差异归因：这次比上次多了什么、少了什么、还在。
@@ -176,7 +214,7 @@ export function diffRuns(prev, cur) {
 export function latestRun(home, excludeStamp) {
   const all = listRuns(home);
   for (let i = all.length - 1; i >= 0; i--) {
-    if (!excludeStamp || all[i].stamp !== excludeStamp) return loadRun(home, all[i].stamp);
+    if (!excludeStamp || all[i].stamp !== excludeStamp) return loadRunByFile(home, all[i].file);
   }
   return null;
 }

@@ -8,7 +8,7 @@ import path from 'node:path';
 const home = fs.mkdtempSync(path.join(os.tmpdir(), 'healthkit-snap-'));
 process.env.DSH_HOME = home;
 
-const { writeRun, listRuns, loadRun, diffRuns, renderDiff, latestRun } = await import('../src/snapshot.mjs');
+const { writeRun, listRuns, loadRun, loadRunByFile, diffRuns, renderDiff, latestRun } = await import('../src/snapshot.mjs');
 
 function mkResult(fps, score, retired) {
   return {
@@ -67,5 +67,19 @@ assert.ok(text.includes('新退役'), '应有新退役段');
   assert.ok(withoutLast && withoutLast.stamp !== last.stamp, '应能排除指定快照');
 }
 
+// 同一毫秒内写两次：文件名会加 '-1' 后缀，字典序会把它排到前面。
+// 排序必须按记录里的 at，不能按文件名——否则「上一次/下一次」反了。
+{
+  const home2 = fs.mkdtempSync(path.join(os.tmpdir(), 'healthkit-snap2-'));
+  const fixedAt = 1763300000000;
+  writeRun(mkResult(['R1#a', 'R13'], 8.0), { home: home2, scenario: 'general', version: 't', at: fixedAt });
+  writeRun(mkResult(['R13', 'R14'], 8.5), { home: home2, scenario: 'general', version: 't', at: fixedAt });
+  const runs2 = listRuns(home2);
+  assert.equal(runs2.length, 2, '同毫秒两次写应存两份');
+  const d2 = diffRuns(loadRunByFile(home2, runs2[0].file), loadRunByFile(home2, runs2[1].file));
+  assert.deepEqual(d2.added.map(function (f) { return f.fp; }), ['R14'], '同毫秒写入后顺序不能反');
+  fs.rmSync(home2, { recursive: true, force: true });
+}
+
 fs.rmSync(home, { recursive: true, force: true });
-console.log('snapshot: 通过（写基线 · 新增/修好/退役三分 · 无基线不误报）');
+console.log('snapshot: 通过（写基线 · 新增/修好/退役三分 · 无基线不误报 · 同毫秒不乱序）');
