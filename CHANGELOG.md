@@ -1,5 +1,19 @@
 # CHANGELOG
 
+## 0.5.2 — 2026-11-16
+
+**面板挂不上（真宿主实测）**：`plugin-status.json` 里 `panel.ok = false`，
+原因是 `cannot get property "register" without inject`。
+
+- 根因：`ctx.inject(['webServer'], cb)` 的回调参数是 **ctx 本身**，不是服务对象。
+  0.5.1 写成 `registerPanel(injected)`，于是去取 `injected.register`——触发 Proxy 的 inject 护栏报错。
+  正确写法是 `injected.get('webServer')`（对齐 dsh-chronicle 的用法）。
+- 修法：抽出纯函数 `resolveWebServer(injected)`，只接受带 `get()` 的 ctx；
+  服务取不到就降级成 `webServer-unavailable`。挂载改走 `ctx.effect(() => ctx.inject(...))`，
+  并加幂等（服务重发布会重复回调，重复注册会撞 Duplicate path）。
+- 测试补硬约束：`resolveWebServer(ws)` 必须返回 null（把服务当 ctx 传是 0.5.1 的原样 bug），
+  `registerPanel({})` / `registerPanel(null)` 只降级不抛。
+
 ## 0.5.1 — 2026-11-16
 
 面板前端修两处，都是 0.5.0 自带的问题：

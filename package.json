@@ -1,6 +1,6 @@
 {
   "name": "dsh-healthkit",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "type": "module",
   "license": "MIT",
   "repository": {
@@ -47,7 +47,7 @@
   ],
   "scripts": {
     "audit": "node ./bin/audit.mjs",
-    "test": "node ./test/rules-on-fixture.mjs && node ./test/invariants.mjs && node ./test/reportpath.mjs && node ./test/version-guard.mjs && node ./test/migrate-guard.mjs && node ./test/tools-shape.mjs && node ./test/panel.mjs"
+    "test": "node ./test/rules-on-fixture.mjs && node ./test/invariants.mjs && node ./test/reportpath.mjs && node ./test/version-guard.mjs && node ./test/migrate-guard.mjs && node ./test/tools-shape.mjs && node ./test/panel.mjs && node ./test/apply-inject.mjs"
   },
   "dsh": {
     "bundle": {

@@ -178,6 +178,18 @@ const TRIM_SCHEMA = {
 
 // 工具表按「每次 apply 的依赖」构建：report 落点需要会话工作区解析器，
 // 不能写成模块级闭包（那样每个宿主实例会共享同一份依赖）。
+// inject 回调拿到的是 **ctx**，服务要经 .get(name) 取。
+// 抽成纯函数是为了能被测试钉住：0.5.1 就是把这个 ctx 直接当 webServer 传了。
+export function resolveWebServer(injected) {
+  if (!injected || typeof injected.get !== 'function') return null;
+  try {
+    const ws = injected.get('webServer');
+    return (ws && typeof ws.register === 'function') ? ws : null;
+  } catch (e) {
+    return null;
+  }
+}
+
 export function buildTools(deps) {
   const d = deps || {};
   const resolveWorkspace = (typeof d.resolveWorkspace === 'function') ? d.resolveWorkspace : function () { return null; };
@@ -677,24 +689,40 @@ export function apply(ctx, config) {
     try { registerAll(ctx); } catch (e) { failures.push('direct tools access: ' + msg(e)); }
   }
 
-  // 面板（只读运维面）：webServer 在 apply 时刻常常还没起，同样用 inject 等它。
-  // 面板挂不上不影响工具面——降级成「没有面板」，写进 status 的 panel 字段。
+  // 面板（只读运维面）：webServer 在 apply 时刻常常还没起，用 inject 等它。
+  // 挂不上不影响工具面——降级成「没有面板」，写进 status 的 panel 字段。
+  //
+  // 2026-11-16 踩坑：inject 的回调参数是 **ctx 本身**，不是服务对象。
+  // 写成 registerPanel(injected) 会去取 injected.register → 触发
+  // 'cannot get property "register" without inject'，面板静默挂不上
+  // （工具面正常，只有 status.panel.ok=false）。必须 injected.get('webServer')。
   state.panel = { ok: false, reason: 'pending' };
+  const startPanel = (ws) => {
+    if (state.panel && state.panel.ok) return; // inject 可能因服务重发布回调多次
+    Promise.resolve()
+      .then(() => import('./src/panel.mjs'))
+      .then((m) => {
+        const rep = m.registerPanel(ws);
+        state.panel = rep;
+        writeStatus({ panel: rep, notes });
+      })
+      .catch((e) => {
+        state.panel = { ok: false, reason: msg(e) };
+        writeStatus({ panel: state.panel });
+      });
+  };
   if (typeof ctx.inject === 'function') {
     try {
-      ctx.inject(['webServer'], (injected) => {
-        Promise.resolve()
-          .then(() => import('./src/panel.mjs'))
-          .then((m) => {
-            const rep = m.registerPanel(injected);
-            state.panel = rep;
-            writeStatus({ panel: rep });
-          })
-          .catch((e) => {
-            state.panel = { ok: false, reason: msg(e) };
-            writeStatus({ panel: state.panel });
-          });
+      const bind = () => ctx.inject(['webServer'], (injected) => {
+        const ws = resolveWebServer(injected);
+        if (!ws) {
+          state.panel = { ok: false, reason: 'webServer-unavailable' };
+          writeStatus({ panel: state.panel });
+          return;
+        }
+        startPanel(ws);
       });
+      if (typeof ctx.effect === 'function') ctx.effect(bind); else bind();
     } catch (e) {
       state.panel = { ok: false, reason: 'ctx.inject(["webServer"]): ' + msg(e) };
       failures.push(state.panel.reason);

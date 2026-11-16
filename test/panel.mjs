@@ -2,6 +2,7 @@
 // 不需要真宿主——用一个假 webServer 收集注册，用假 res 收集响应。
 import assert from 'node:assert/strict';
 import { registerPanel, collectSummary } from '../src/panel.mjs';
+import { resolveWebServer } from '../index.js';
 
 const routes = {};
 const fakeWs = { register(r) { routes[r.path] = r; return () => {}; } };
@@ -56,4 +57,16 @@ const reqRemote = { url: '/dsh-healthkit-panel', socket: { remoteAddress: '192.1
   assert.equal(a.at, b.at, '1 分钟内应命中缓存');
 }
 
-console.log('panel: 通过（3 路由 · 回环守卫 · HTML 离线 · 缓存命中）');
+// 注入约定的守门测试：0.5.1 就是把 inject 回调拿到的 ctx 直接当 webServer 传了，
+// 结果 registerPanel 去取 ctx.register → 抛 'cannot get property "register" without inject'。
+{
+  const ws = { register() { return () => {}; } };
+  assert.equal(resolveWebServer({ get: (n) => (n === 'webServer' ? ws : undefined) }), ws, '应能从 ctx 取到 webServer');
+  assert.equal(resolveWebServer(ws), null, '把服务对象当 ctx 传必须被拒（这正是 0.5.1 的 bug）');
+  assert.equal(resolveWebServer(null), null);
+  // 非法输入不抛异常，只降级
+  assert.equal(registerPanel({}).ok, false);
+  assert.equal(registerPanel(null).ok, false);
+}
+
+console.log('panel: 通过（3 路由 · 回环守卫 · HTML 离线 · 缓存命中 · 注入约定）');
