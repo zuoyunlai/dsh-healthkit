@@ -88,7 +88,7 @@ H=E:/auditkit-boot-home
 mkdir -p "$H/profiles/probe"
 cp ~/.dsh/profiles/desktop/{package.json,cordis.patch.yml} "$H/profiles/probe/"
 # node_modules 用 junction 指回真 profile，避免几百 MB 拷贝（Windows）
-powershell -NoProfile -Command 'New-Item -ItemType Junction -Path "E:\auditkit-boot-home\profiles\probe\node_modules" -Target "C:\Users\Zuoyunlai\.dsh\profiles\desktop\node_modules"'
+powershell -NoProfile -Command 'New-Item -ItemType Junction -Path "E:\auditkit-boot-home\profiles\probe\node_modules" -Target "$env:USERPROFILE\.dsh\profiles\desktop\node_modules"'
 DSH_HOME=$H dsh --profile probe --dump-config   # 只看合成树（含 skipped 原因）
 DSH_HOME=$H dsh --profile probe1 --no-open      # 真挂载一次（用 profile 名，别加 app 参数；--no-open 免得弹浏览器）
 cat $H/dsh-auditkit/plugin-status.json          # 看 registered / failures
