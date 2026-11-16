@@ -17,7 +17,7 @@ dsh plugin --profile <profile> add link:/path/to/dsh-healthkit
 开发期用 `link:`（符号链接，改源码重启宿主即生效）。`file:` 是拷贝，改源码不生效，
 得 `dsh plugin --profile <profile> install --force` 重装。装完重启宿主一次。
 
-## 十二个工具
+## 十四个工具
 
 | 工具 | 干什么 |
 | --- | --- |
@@ -33,6 +33,8 @@ dsh plugin --profile <profile> add link:/path/to/dsh-healthkit
 | `audit_retire` | 误报记档（原因必填），之后不再计分；action=restore 撤销记档 |
 | `audit_diff` | 跨次差异归因：新增了什么、真修好了什么、哪些只是被退役（不算修好） |
 | `audit_verify` | 跨重启验回：上次体检说该修的，修好了没、有没有把别的东西搞坏（只报告不修） |
+| `audit_check` | CI 门禁形态：PASS/WARN/FAIL 三值 + 退出码 0/1/2（与 dsh-plugin-doctor 同契约） |
+| `audit_recommend` | 能力域推荐源：20 域的补救阶梯与「去哪找」（不联网、不给包名） |
 
 不想用工具、只想在终端跑：
 
@@ -49,6 +51,9 @@ dsh-healthkit --retire <fp> --reason "原因"   # 误报记档（--list-retired 
 dsh-healthkit --unretire <fp>                # 撤销记档（重新计分）
 dsh-healthkit --diff              # 与上一次快照比：新增 / 真修好 / 新退役
 dsh-healthkit --verify             # 验回：修好了没 / 还在 / 被静音 / 回归
+dsh-healthkit --check              # CI 门禁：三值契约 + 退出码 0/1/2
+dsh-healthkit --recommend          # 能力域推荐源（20 域阶梯 + 去哪找）
+dsh-healthkit --format json       # 全量 JSON 报告（机器可读，schema: dsh-healthkit/report/v1）
 ```
 
 ## 面板

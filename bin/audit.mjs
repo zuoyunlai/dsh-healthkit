@@ -81,6 +81,13 @@ var USAGE = [
   '能力域矩阵：',
   '  dsh-healthkit --capabilities   20 个能力域有没有实现 + 三级补救阶梯（先在配置/内置找，最后才装插件）',
   '',
+  '推荐源：',
+  '  dsh-healthkit --recommend         20 个能力域的推荐源（阶梯 + 去哪找，不联网不给包名）',
+  '',
+  'CI / 机器可读：',
+  '  dsh-healthkit --check            生态三值契约（PASS/WARN/FAIL + 退出码 0/1/2，同 dsh-plugin-doctor）',
+  '  dsh-healthkit --format json      全量 JSON 报告（--out 指定落点）',
+  '',
   '验回与时间线：',
   '  dsh-healthkit --verify            上次修的修好了没、有没有回归（开机自动核对过）',
   '',
@@ -201,6 +208,48 @@ if (has('trim')) {
     else console.log(trimMod.render(ta));
     process.exit(0);
   } catch (e) { console.error('trim failed: ' + e.message); process.exit(1); }
+}
+
+if (has('recommend')) {
+  // 能力域推荐源：可订阅的 JSON 文档（schema: dsh-healthkit/recommend/v1）。
+  // 只给「去哪找 + 怎么按阶梯补」，不联网、不推荐具体包名。
+  try {
+    var recMod = await import('../src/recommend.mjs');
+    var snapR = audit({ scenario: arg('scenario', 'general') });
+    var recDoc = recMod.buildRecommend(snapR.facts);
+    var recOut = arg('out', null);
+    if (recOut) {
+      var recPath = (await import('../src/reportpath.mjs')).jsonReportPath(recOut);
+      fs.writeFileSync(recPath, JSON.stringify(recDoc, null, 2) + '\n', 'utf8');
+      console.log('推荐源已写入 ' + recPath);
+    } else if (has('json')) {
+      console.log(JSON.stringify(recDoc, null, 2));
+    } else {
+      console.log(recMod.renderRecommend(recDoc));
+    }
+    process.exit(0);
+  } catch (e) { console.error('recommend failed: ' + e.message); process.exit(1); }
+}
+
+if (has('check')) {
+  // 生态三值契约（与 dsh-plugin-doctor 的 --format check 同形）：
+  // PASS/WARN/FAIL + 退出码 0/1/2。用途：让「整机健康」与「单插件合规」能被同一套 CI 消费。
+  try {
+    var chkMod = await import('../src/report-json.mjs');
+    var snapC = audit({ scenario: arg('scenario', 'general') });
+    var env = chkMod.buildCheckEnvelope(snapC, { version: snapC.self && snapC.self.version });
+    if (has('json')) console.log(JSON.stringify(env, null, 2));
+    else {
+      console.log('contract: ' + env.contract + '  exit=' + env.doctor.exit);
+      var byStatus = { PASS: 0, WARN: 0, FAIL: 0 };
+      env.checks.forEach(function (c) { byStatus[c.status] = (byStatus[c.status] || 0) + 1; });
+      console.log('PASS ' + byStatus.PASS + ' / WARN ' + byStatus.WARN + ' / FAIL ' + byStatus.FAIL + '（共 ' + env.checks.length + ' 项）');
+      env.checks.filter(function (c) { return c.status !== 'PASS'; }).forEach(function (c) {
+        console.log('  [' + c.status + '] ' + c.id + ' ' + c.name);
+      });
+    }
+    process.exit(env.doctor.exit);
+  } catch (e) { console.error('check failed: ' + e.message); process.exit(1); }
 }
 
 if (has('init')) {
@@ -340,6 +389,16 @@ try {
   } catch (e) { /* 快照写失败不该让体检失败 */ }
   var factsOut = arg('dump-facts', null);
   if (factsOut) { fs.mkdirSync(path.dirname(factsOut), { recursive: true }); fs.writeFileSync(factsOut, JSON.stringify(result.facts, null, 2), 'utf8'); }
+  if (arg('format', 'md') === 'json') {
+    var jsonMod = await import('../src/report-json.mjs');
+    var jsonRep = jsonMod.buildJsonReport(result, { version: result.self && result.self.version });
+    var rpMod = await import('../src/reportpath.mjs');
+    var jsonPath = rpMod.jsonReportPath(out);
+    fs.writeFileSync(jsonPath, JSON.stringify(jsonRep, null, 2) + '\n', 'utf8');
+    if (has('json')) console.log(JSON.stringify(jsonRep, null, 2));
+    else console.log('JSON 报告已写入 ' + jsonPath);
+    process.exit(0);
+  }
   fs.writeFileSync(out, result.report, 'utf8');
   if (has('json')) process.stdout.write(JSON.stringify({ score: result.score, findings: result.findings, retired: result.retired.length }, null, 2) + '\n');
   else {

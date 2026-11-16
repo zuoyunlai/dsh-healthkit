@@ -32,6 +32,14 @@ export function reportFileName(now) {
 
 const trimmed = (v) => (typeof v === 'string' && v.trim() ? v.trim() : '');
 
+// JSON 报告落点：out 以 .json 结尾就照用；否则把 .md 换成 .json。
+// 2026-11-16 踩过：out 传 'x.json' 时被再追加一次，变成 'x.json.json'。
+export function jsonReportPath(outPath) {
+  const p = String(outPath || '');
+  if (/\.json$/i.test(p)) return p;
+  return p.replace(/\.md$/i, '') + '.json';
+}
+
 export function resolveReportPath(opts) {
   const o = opts || {};
   const home = trimmed(o.home) || dshHome();

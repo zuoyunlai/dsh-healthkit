@@ -118,6 +118,34 @@ const VERIFY_SCHEMA = {
   required: ['ok', 'summary'],
 };
 
+
+const CHECK_SCHEMA = {
+  type: 'object',
+  properties: {
+    ok: { type: 'boolean' },
+    contract: { type: 'string' },
+    exit: { type: 'number' },
+    pass: { type: 'number' },
+    warn: { type: 'number' },
+    fail: { type: 'number' },
+    items: { type: 'array', items: { type: 'string' } },
+    summary: { type: 'string' },
+  },
+  required: ['ok', 'contract', 'exit', 'summary'],
+};
+
+
+const RECOMMEND_SCHEMA = {
+  type: 'object',
+  properties: {
+    schema: { type: 'string' },
+    domains: { type: 'number' },
+    items: { type: 'array', items: { type: 'string' } },
+    summary: { type: 'string' },
+  },
+  required: ['schema', 'domains', 'summary'],
+};
+
 const FINDINGS_SCHEMA = {
   type: 'object',
   properties: {
@@ -348,6 +376,7 @@ export function buildTools(deps) {
       type: 'object',
       properties: {
         out: { type: 'string', description: '报告输出路径：绝对路径照用，相对路径以本会话工作区为基准；缺省 = 会话工作区下的 AUDIT-<日期>.md。注意：不接受「相对 process.cwd」的旧语义' },
+        format: { type: 'string', description: 'md（默认，人读 Markdown）| json（机器可读全量报告，写同名 .json）' },
       },
       additionalProperties: false,
     },
@@ -376,6 +405,21 @@ export function buildTools(deps) {
       });
       if (target.error) throw new Error('audit_report: ' + target.error);
       fs.mkdirSync(path.dirname(target.path), { recursive: true });
+      // format=json → 机器可读全量报告（schema: dsh-healthkit/report/v1），供其他插件/脚本消费。
+      if (args && args.format === 'json') {
+        const { buildJsonReport } = await import('./src/report-json.mjs');
+        const rep = buildJsonReport(r, { version: r.self && r.self.version });
+        const { jsonReportPath } = await import('./src/reportpath.mjs');
+        const jsonPath = jsonReportPath(target.path);
+        fs.writeFileSync(jsonPath, JSON.stringify(rep, null, 2) + '\n', 'utf8');
+        return {
+          path: jsonPath,
+          via: target.source,
+          score: r.score.total,
+          findings: r.findings.length,
+          bytes: Buffer.byteLength(JSON.stringify(rep, 'utf8'), 'utf8'),
+        };
+      }
       fs.writeFileSync(target.path, r.report, 'utf8');
       return {
         path: target.path,
@@ -864,6 +908,78 @@ export function buildTools(deps) {
         regressions: (v && v.regressions || []).length,
         timeline: tl.map((t) => String(t.at).replace('T', ' ').slice(5, 19) + ' 分数 ' + t.score + ' +' + t.added + '/修' + t.fixed + '/静' + t.muted),
         summary: L.join('\n'),
+      };
+    },
+  },
+  {
+    name: 'audit_check',
+    description: 'CI 门禁形态：按生态三值契约（PASS/WARN/FAIL + 退出码 0/1/2）给出体检结论，与 dsh-plugin-doctor 的 --format check 同形，可被同一套 CI/Action 消费。P0/P1=FAIL，P2=WARN，INFO 与已退役= PASS',
+    parameters: {
+      type: 'object',
+      properties: {
+        scenario: { type: 'string', description: 'general|code|design|writing，缺省 general' },
+      },
+      additionalProperties: false,
+    },
+    output: {
+      schema: CHECK_SCHEMA,
+      render(_args, v) {
+        return text(v.summary);
+      },
+    },
+    execute: async (args) => {
+      const { audit } = await import('./src/engine.mjs');
+      const { buildCheckEnvelope } = await import('./src/report-json.mjs');
+      const r = audit({ scenario: (args && args.scenario) || 'general' });
+      const env = buildCheckEnvelope(r, { version: r.self && r.self.version });
+      const by = { PASS: 0, WARN: 0, FAIL: 0 };
+      env.checks.forEach((c) => { by[c.status] = (by[c.status] || 0) + 1; });
+      const L = [];
+      L.push('契约 ' + env.contract + ' · 退出码 ' + env.doctor.exit + '（0 全过 / 1 有 WARN / 2 有 FAIL）');
+      L.push('PASS ' + by.PASS + ' · WARN ' + by.WARN + ' · FAIL ' + by.FAIL + '（共 ' + env.checks.length + ' 项）');
+      const bad = env.checks.filter((c) => c.status !== 'PASS');
+      if (bad.length) {
+        L.push('');
+        bad.forEach((c) => L.push('  [' + c.status + '] ' + c.id + ' ' + c.name));
+      }
+      return {
+        ok: env.ok,
+        contract: env.contract,
+        exit: env.doctor.exit,
+        pass: by.PASS || 0,
+        warn: by.WARN || 0,
+        fail: by.FAIL || 0,
+        items: bad.map((c) => c.status + ' ' + c.id + ' ' + c.name),
+        summary: L.join('\n'),
+      };
+    },
+  },
+  {
+    name: 'audit_recommend',
+    description: '能力域推荐源：20 个能力域各自的补救阶梯（配置→provider→插件→习惯）与「去哪找」。装插件是最后手段，只给搜索关键词不给包名；missing 只表示当前没有实现，不代表你该装',
+    parameters: {
+      type: 'object',
+      properties: {
+        scenario: { type: 'string', description: 'general|code|design|writing，缺省 general' },
+      },
+      additionalProperties: false,
+    },
+    output: {
+      schema: RECOMMEND_SCHEMA,
+      render(_args, v) {
+        return text(v.summary);
+      },
+    },
+    execute: async (args) => {
+      const { audit } = await import('./src/engine.mjs');
+      const { buildRecommend, renderRecommend } = await import('./src/recommend.mjs');
+      const r = audit({ scenario: (args && args.scenario) || 'general' });
+      const doc = buildRecommend(r.facts);
+      return {
+        schema: doc.schema,
+        domains: doc.domains.length,
+        items: doc.domains.map((d) => d.localState + ' ' + d.label + ' → ' + (d.sources.builtin)),
+        summary: renderRecommend(doc),
       };
     },
   },

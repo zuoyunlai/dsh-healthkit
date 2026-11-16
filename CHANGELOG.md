@@ -1,5 +1,39 @@
 # CHANGELOG
 
+## 0.11.0 — 2026-11-16
+
+### 审计报告第四批（生态位）：三件事全部落地
+
+**② 机器可读 JSON 报告**
+
+- `audit_report format=json` / `dsh-healthkit --format json` → 全量 JSON 报告，
+  schema `dsh-healthkit/report/v1`：总分与 7 个维度分、封顶原因、全量 findings
+  （含 evidence/measured/fixHint/retired）、修复顺序、能力域矩阵、self 段。
+- 修一个落点 bug：out 以 `.json` 结尾时会被再追加一次变成 `x.json.json`；
+  抽出 `jsonReportPath()` 统一处理。
+
+**① 与 dsh-plugin-doctor 互补**
+
+- 生态正在收敛三值契约（doctor SPEC §1.1 提到的 RFC #1846：PASS/WARN/FAIL + 退出码 0/1/2）。
+  本插件按**同一形态**提供：CLI `--check` 与工具 `audit_check`，信封字段与 doctor 对齐
+  （`{ ok, contract, checks[], doctor:{...}, target:{...} }`）。
+- 映射：P0/P1=FAIL、P2=WARN、INFO 与**已退役**与 ADVISORY=PASS；
+  能力域 conflicting/redundant/degraded=WARN。P1 定为 FAIL 而非 WARN——P1 是「已证实在扣分」，
+  降成 WARN 会让 CI 门形同虚设。
+- 分工写进 `docs/COMPLEMENTARY.md`：doctor 查**单插件仓合规**，本插件查**整机装配健康**；
+  两者不互相调用（doctor 是 CLI、无服务接口），互补靠**契约同形**而非代码耦合。
+
+**③ capability-map 20 域 → 可订阅推荐源**
+
+- 新增 `src/recommend.mjs` → `dsh-healthkit/recommend/v1`：20 个域各自的补救阶梯、
+  宿主内置实现、**搜索关键词**（不给包名）。
+- 三条红线被测试钉住：① 装插件是最后手段（阶梯恒为四级：配置→provider→插件→习惯）；
+  ② 不联网、不给具体包名（包会改名/下架，且 npm 有相似名保护）；③ missing ≠ 该装。
+- 推荐源里不含任何本机绝对路径（可分享）。
+- CLI `--recommend`、工具 `audit_recommend`。
+
+工具面 12 → 14。
+
 ## 0.10.1 — 2026-11-16
 
 ### 修：audit_verify 返回开机时的旧记录，导致「被静音」看不出来
