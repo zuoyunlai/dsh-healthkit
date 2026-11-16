@@ -32,29 +32,31 @@ function ok(name, cond) {
 
 const a = audit({ scenario: 'general' });
 const b = audit({ scenario: 'general' });
-ok('TTL 内应复用同一份 facts（collectedAt 相同）', a.facts.collectedAt === b.facts.collectedAt);
+// 用「对象身份」而不是时间戳判缓存：CI 上两次采集可能落在同一毫秒，
+// 比 collectedAt 会假红（v0.12.0 的 ci 就是这么挂的）。
+ok('TTL 内应复用同一份 facts（同一个对象）', a.facts === b.facts);
 ok('缓存应记录当前 home', factsCacheInfo().some((x) => x.home === home && x.fresh));
 ok('TTL 应为正数', typeof TTL_MS === 'number' && TTL_MS > 0);
 
 // 改配置：指纹（profiles/p1/package.json 的 mtime+size）必须变化
-const before = b.facts.collectedAt;
+const beforeFacts = b.facts;
 writePkg(['@deepseek-ai/dsh-base']);
 const c = audit({ scenario: 'general' });
-ok('改了 profile 的 package.json 后必须重采（不许返回旧 facts）', c.facts.collectedAt !== before);
+ok('改了 profile 的 package.json 后必须重采（不许返回旧 facts）', c.facts !== beforeFacts);
 ok('重采后内容应反映新配置',
   (c.facts.profiles[0].bundles || []).indexOf('@deepseek-ai/dsh-base') !== -1);
 
 // 旁路 1：opts.fresh
-const d1 = c.facts.collectedAt;
+const freshBefore = c.facts;
 const d = audit({ scenario: 'general', fresh: true });
-ok('opts.fresh 必须绕过缓存', d.facts.collectedAt !== d1 && d1 !== undefined);
+ok('opts.fresh 必须绕过缓存（拿到新对象）', d.facts !== freshBefore);
 
 // 旁路 2：环境变量整体关闭
 clearFactsCache();
 process.env.DSH_HEALTHKIT_NO_CACHE = '1';
 const e1 = audit({ scenario: 'general' });
 const e2 = audit({ scenario: 'general' });
-ok('DSH_HEALTHKIT_NO_CACHE=1 时两次必须各自采集', e1.facts.collectedAt !== e2.facts.collectedAt);
+ok('DSH_HEALTHKIT_NO_CACHE=1 时两次必须各自采集（不同对象）', e1.facts !== e2.facts);
 delete process.env.DSH_HEALTHKIT_NO_CACHE;
 
 fs.rmSync(home, { recursive: true, force: true });
