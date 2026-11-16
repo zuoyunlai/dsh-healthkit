@@ -206,6 +206,25 @@ const RETIRE_SCHEMA = {
   required: ['action', 'ok', 'summary'],
 };
 
+
+const DIFF_SCHEMA = {
+  type: 'object',
+  properties: {
+    ok: { type: 'boolean' },
+    prevAt: { type: 'string' },
+    curAt: { type: 'string' },
+    prevScore: { type: 'number' },
+    curScore: { type: 'number' },
+    delta: { type: 'number' },
+    added: { type: 'array', items: { type: 'string' } },
+    fixed: { type: 'array', items: { type: 'string' } },
+    newlyRetired: { type: 'array', items: { type: 'string' } },
+    kept: { type: 'number' },
+    summary: { type: 'string' },
+  },
+  required: ['ok', 'summary'],
+};
+
 // 工具表按「每次 apply 的依赖」构建：report 落点需要会话工作区解析器，
 // 不能写成模块级闭包（那样每个宿主实例会共享同一份依赖）。
 // inject 回调拿到的是 **ctx**，服务要经 .get(name) 取。
@@ -257,6 +276,11 @@ export function buildTools(deps) {
       const r = audit({ scenario: (args && args.scenario) || 'general' });
       const hist = await import('./src/history.mjs');
       hist.append(r, { scenario: (args && args.scenario) || 'general' });
+      // 写运行快照：跨次差异归因的基线（audit_diff 用）。
+      try {
+        const snap = await import('./src/snapshot.mjs');
+        snap.writeRun(r, { home: r.facts.home, scenario: (args && args.scenario) || 'general', version: r.self.version });
+      } catch (e) { /* 快照写失败不该让体检失败 */ }
       const by = {};
       r.findings.forEach((f) => { by[f.severity] = (by[f.severity] || 0) + 1; });
       const top = r.findings
@@ -714,6 +738,62 @@ export function buildTools(deps) {
       return {
         action: 'retire', ok: true, fp: hit.fp, reason: reason, title: hit.title,
         summary: '已记档：' + hit.fp + '（' + hit.title + '）\n理由：' + reason + '\n它不再计入评分，也不再出现在问题清单里。取消记档：删掉 $DSH_HOME/dsh-healthkit/retirements.json 里这条。',
+      };
+    },
+  },
+  {
+    name: 'audit_diff',
+    description: '跨次差异归因：把这次体检与上一次快照对比——新增了哪些问题、真正修好了哪些、哪些只是被退役记档（不算修好）、严重度有没有变化。用于回答「我这次改动到底改善了什么」',
+    parameters: {
+      type: 'object',
+      properties: {
+        scenario: { type: 'string', description: 'general|code|design|writing，缺省 general' },
+        record: { type: 'boolean', description: '是否顺便把这次体检存成新快照（缺省 true）；传 false 则只看不写' },
+      },
+      additionalProperties: false,
+    },
+    output: {
+      schema: DIFF_SCHEMA,
+      render(_args, v) {
+        return text(v.summary);
+      },
+    },
+    execute: async (args) => {
+      const { audit } = await import('./src/engine.mjs');
+      const snap = await import('./src/snapshot.mjs');
+      const a = args || {};
+      const r = audit({ scenario: a.scenario || 'general' });
+      const home = r.facts.home;
+
+      // 先取上一次快照（排除本次刚写的），再决定要不要写本次快照
+      const prev = snap.latestRun(home);
+      const cur = {
+        at: new Date().toISOString(),
+        score: r.score.total,
+        findings: r.findings.map((f) => ({
+          fp: f.fp, ruleId: f.ruleId, severity: f.severity, dimension: f.dimension || '',
+          title: f.title || '', advisory: f.advisory === true, fixHint: f.fixHint || null,
+        })),
+        retired: r.retired.map((f) => f.fp),
+      };
+
+      if (a.record !== false) {
+        snap.writeRun(r, { home: home, scenario: a.scenario || 'general', version: r.self.version });
+      }
+
+      const d = snap.diffRuns(prev, cur);
+      return {
+        ok: true,
+        prevAt: d.prevAt || '',
+        curAt: d.curAt,
+        prevScore: typeof d.prevScore === 'number' ? d.prevScore : 0,
+        curScore: typeof d.curScore === 'number' ? d.curScore : 0,
+        delta: typeof d.delta === 'number' ? d.delta : 0,
+        added: d.added.map((f) => '[' + f.severity + '] ' + f.ruleId + ' ' + f.fp),
+        fixed: d.fixed.map((f) => '[' + f.severity + '] ' + f.ruleId + ' ' + f.fp),
+        newlyRetired: d.newlyRetired.map((f) => f.fp),
+        kept: d.kept,
+        summary: snap.renderDiff(d),
       };
     },
   },

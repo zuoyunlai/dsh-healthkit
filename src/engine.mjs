@@ -64,5 +64,5 @@ export function audit(opts) {
     self.notes.push('账本读取失败：' + ((e && e.message) || e));
   }
   var report = renderReport(facts, kept, sc, { retired: retired, attr: attr, version: pkgVersion, self: self });
-  return { facts: facts, findings: kept, retired: retired, allFindings: findings, score: sc, attribution: attr, report: report, self: self };
+  return { facts: facts, findings: kept, retired: retired, allFindings: findings, score: sc, attribution: attr, report: report, self: self, rubricVersion: sc.rubricVersion };
 }

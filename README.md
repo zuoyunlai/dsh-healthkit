@@ -17,7 +17,7 @@ dsh plugin --profile <profile> add link:/path/to/dsh-healthkit
 开发期用 `link:`（符号链接，改源码重启宿主即生效）。`file:` 是拷贝，改源码不生效，
 得 `dsh plugin --profile <profile> install --force` 重装。装完重启宿主一次。
 
-## 十个工具
+## 十一个工具
 
 | 工具 | 干什么 |
 | --- | --- |
@@ -31,6 +31,7 @@ dsh plugin --profile <profile> add link:/path/to/dsh-healthkit
 | `audit_trim` | 装载面瘦身：同能力多实现、超 bundles 上限、记忆插件叠放，给主备候选 |
 | `audit_capabilities` | 能力域矩阵：20 个域 × 六态（有/多/冲突/失效/无/未知），每缺口给四级补救阶梯 |
 | `audit_retire` | 误报记档（原因必填），之后不再计分 |
+| `audit_diff` | 跨次差异归因：新增了什么、真修好了什么、哪些只是被退役（不算修好） |
 
 不想用工具、只想在终端跑：
 
@@ -44,6 +45,7 @@ dsh-healthkit --findings      # 问题清单 / --explain <fp> 解释一条 / --p
 dsh-healthkit --trim          # 装载面瘦身候选（只给建议，不改配置）
 dsh-healthkit --init          # 接入自检：报环境/装没装/还差哪一步
 dsh-healthkit --retire <fp> --reason "原因"   # 误报记档（--list-retired 查看）
+dsh-healthkit --diff              # 与上一次快照比：新增 / 真修好 / 新退役
 ```
 
 ## 面板

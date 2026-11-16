@@ -80,6 +80,9 @@ var USAGE = [
   '能力域矩阵：',
   '  dsh-healthkit --capabilities   20 个能力域有没有实现 + 三级补救阶梯（先在配置/内置找，最后才装插件）',
   '',
+  '跨次差异：',
+  '  dsh-healthkit --diff              与上一次快照比：新增 / 真修好 / 新退役 / 严重度变化',
+  '',
   '装载面瘦身：',
   '  dsh-healthkit --trim            同能力多实现 / 超限 / 记忆叠放，给主备候选',
   '',
@@ -132,6 +135,18 @@ if (has('capabilities')) {
     else console.log(cmMod.renderMatrix(mx));
     process.exit(0);
   } catch (e) { console.error('capabilities failed: ' + e.message); process.exit(1); }
+}
+
+if (has('diff')) {
+  try {
+    var snapMod2 = await import('../src/snapshot.mjs');
+    var snapCur = snapMod2.latestRun(home());
+    var snapPrev = snapMod2.latestRun(home(), snapCur ? snapCur.stamp : null);
+    var snapDiff = snapMod2.diffRuns(snapPrev, snapCur);
+    if (has('json')) console.log(JSON.stringify(snapDiff, null, 2));
+    else console.log(snapMod2.renderDiff(snapDiff));
+    process.exit(0);
+  } catch (e) { console.error('diff failed: ' + e.message); process.exit(1); }
 }
 
 if (has('trim')) {
@@ -275,6 +290,11 @@ try {
     process.exit(0);
   }
   historyAppend(result, { scenario: scenario });
+  // 写运行快照：跨次差异归因的基线
+  try {
+    var snapMod = await import('../src/snapshot.mjs');
+    snapMod.writeRun(result, { home: home(), scenario: scenario, version: 'cli' });
+  } catch (e) { /* 快照写失败不该让体检失败 */ }
   var factsOut = arg('dump-facts', null);
   if (factsOut) { fs.mkdirSync(path.dirname(factsOut), { recursive: true }); fs.writeFileSync(factsOut, JSON.stringify(result.facts, null, 2), 'utf8'); }
   fs.writeFileSync(out, result.report, 'utf8');
