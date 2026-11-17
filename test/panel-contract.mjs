@@ -40,6 +40,16 @@ ok('client 不许硬编码分档阈值 score >= 7', !/score\s*>=\s*7\b/.test(cli
 ok('client 不许硬编码维度色阈值 score >= 9', !/score\s*>=\s*9\b/.test(client));
 ok('client 应从 payload 读 bands', /bandSegments\(\s*bands\s*\)|bandSegments\(\s*d\.bands\s*\)/.test(client));
 
+// 2026-11-17：语言检测的接口契约（修过一个真 bug）。
+// 运行时 locale 服务只有 getLocale/getSnapshot/subscribe/setLocale/addLanguage/register/bind，
+// **没有 current()**；原实现调 current() 导致 typeof 检查恒假、永远回退中文。
+// 断言看「代码」而不是「注释」：client.js 的注释里会提到被修掉的旧写法，不能算违规。
+const clientCode = client.replace(/^\s*\/\/.*$/gm, '');
+ok('client 不许调 locale 的 current()（该接口不存在）', !/loc\.current\s*\(/.test(clientCode));
+ok('client 必须用 getLocale 或 getSnapshot 读 active', /getLocale\s*\(|getSnapshot\s*\(/.test(clientCode));
+ok('client 必须订阅 locale 变化（实时切语言）', /\.subscribe\s*\(/.test(clientCode));
+ok('Body/TabTitle 必须读实时语言，不许在 apply 里定死', /useLang\(ctx\)/.test(clientCode) && !/let lang = I18N\./.test(clientCode));
+
 // 2026-11-17 回归：client 曾按「极差 < 1 分」把折线整个关掉，而服务端版本一直画，
 // 两端口径分叉 → 用户看到「趋势图没了」。图和说明是两件事，图不许条件省略。
 ok('client 不许按极差省略折线', !/spread\s*>=\s*[\d.]+\s*\?/.test(client));

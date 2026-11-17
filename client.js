@@ -91,12 +91,52 @@ window.__ModuleLoader__.load({
     };
     const SEV_COLOR = { P0: C.bad, P1: C.warn, P2: C.accent, INFO: C.info };
 
+    // 语言检测：只认宿主 locale 服务的真实契约。
+    //
+    // 2026-11-17 修：原实现调 `loc.current()` —— 运行时 `locale` 服务**没有这个方法**
+    // （只有 getLocale / getSnapshot / subscribe / setLocale / addLanguage / register / bind），
+    // 于是 typeof 检查永远为假、恒回退中文：切到英文宿主，侧栏标签仍是「体检」。
+    // 另外回退方向也改对：DSH 的语言回退链终止于英文，所以「非中文也非英文」应回退 en 而不是 zh。
     function pickLocale(ctx) {
       try {
         const loc = ctx && typeof ctx.get === 'function' ? ctx.get('locale') : null;
-        const cur = loc && typeof loc.current === 'function' ? String(loc.current() || '') : '';
-        return cur.toLowerCase().indexOf('en') === 0 ? I18N.en : I18N.zh;
-      } catch (e) { return I18N.zh; }
+        if (!loc) return I18N.zh;
+        let id = '';
+        if (typeof loc.getLocale === 'function') {
+          const snap = loc.getLocale();
+          id = String((snap && snap.active) || '');
+        } else if (typeof loc.getSnapshot === 'function') {
+          const snap = loc.getSnapshot();
+          id = String((snap && snap.active) || '');
+        }
+        const low = id.toLowerCase();
+        if (low.indexOf('zh') === 0) return I18N.zh;
+        if (low.indexOf('en') === 0) return I18N.en;
+        // 第三语言（ja/es/fr/de/ru/pt…）：我们只有中英两套文案，按 DSH 的回退链落到英文。
+        if (low) return I18N.en;
+      } catch (e) { /* 落到底部回退 */ }
+      try {
+        const nav = typeof navigator !== 'undefined' ? String(navigator.language || '') : '';
+        if (nav.toLowerCase().indexOf('zh') === 0) return I18N.zh;
+      } catch (e) { /* ignore */ }
+      return I18N.zh;
+    }
+
+    // 实时跟语言切换：宿主 locale 变更会 bump revision 并通知订阅者。
+    // 原来 lang 在 apply 时就定死，用户切语言后面板不会跟着变。
+    function useLang(ctx) {
+      const [lang, setLang] = useState(function () { return pickLocale(ctx); });
+      useEffect(function () {
+        let loc = null;
+        try { loc = ctx && typeof ctx.get === 'function' ? ctx.get('locale') : null; } catch (e) { loc = null; }
+        if (!loc || typeof loc.subscribe !== 'function') return undefined;
+        const sync = function () { setLang(pickLocale(ctx)); };
+        sync();
+        let off = null;
+        try { off = loc.subscribe(sync); } catch (e) { off = null; }
+        return function () { try { if (typeof off === 'function') off(); } catch (e) { /* ignore */ } };
+      }, []);
+      return lang;
     }
 
     // 侧栏标签 chip / 指南卡片的图标 = 仓库根 logo.svg 的同一份几何（绿色圆角底 + 白色手形）。
@@ -858,10 +898,8 @@ window.__ModuleLoader__.load({
     return {
       inject: ['slots', 'sidebarRightTabs', 'sidebarRight', 'locale'],
       apply(ctx) {
-        let lang = I18N.zh;
-        try { lang = pickLocale(ctx); } catch (e) { /* 退回中文 */ }
-        const Body = function () { return h(Panel, { lang }); };
-        const TabTitle = function () { return h(TitleSpan, { lang }); };
+        const Body = function () { return h(Panel, { lang: useLang(ctx) }); };
+        const TabTitle = function () { return h(TitleSpan, { lang: useLang(ctx) }); };
         try { console.info(TAG, 'client loaded'); } catch (e) { /* ignore */ }
 
         ctx.effect(function () {

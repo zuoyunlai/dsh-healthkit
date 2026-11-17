@@ -1,5 +1,23 @@
 # CHANGELOG
 
+## 未发布 — 面板语言修复批
+
+### 修：侧栏面板永远显示中文（切英文宿主也不变）
+
+- **根因**：`pickLocale()` 调 `loc.current()`，而运行时 `locale` 服务**没有这个方法**
+  （契约只有 `getLocale / getSnapshot / subscribe / setLocale / addLanguage / register / bind`）。
+  `typeof loc.current === 'function'` 恒为假 ⇒ 恒回退中文；而且 `lang` 在 `apply()` 时就定死，切语言不重渲染。
+- **修法**：改读 `getLocale().active`（无则 `getSnapshot()`）；新增 `useLang(ctx)` 用
+  `locale.subscribe` 订阅变更，`Body` / `TabTitle` 每次渲染取实时语言；第三语言（ja/es/fr/de/ru/pt）
+  按 DSH 的回退链落到英文，不再错落成中文。
+- **实测**（一次性探针，把面板标题渲染成文本）：`zh-CN → 体检`、`en → Checkup`、`ja → Checkup`、
+  `de → Checkup`、缺失 → `体检`；每次渲染都订阅 1 次。
+- **守卫**：`test/panel-contract.mjs` 加 4 条静态断言（不许调 `current()`、必须用
+  `getLocale/getSnapshot`、必须订阅、`Body/TabTitle` 不许在 apply 里定死 lang）；断言只看代码、不看注释。
+
+> 未动的边界：服务端渲染的网页面板与 CLI 文案仍是中文——它们不在浏览器 locale 体系里，
+> 要做得多语言是另一件事（见上一条「工具描述/报告正文不随语言切换」的说明）。
+
 ## 未发布 — 竞品分析反哺批
 
 > 依据 `docs/FIXLOG-COMPETITIVE-2026-11-17.md`。核心事实：竞品分析指出
