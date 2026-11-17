@@ -1,26 +1,32 @@
 # CHANGELOG
 
-## 未发布 — 代码审查反哺批
+## 0.12.1 — 2026-11-17
+
+本版四个批次：**代码审查反哺**（安全 P1×1 / 正确性 P1×1 / 性能 P1×1 / P2×4 / P3×3）· **文档漂移修复** · **面板语言修复 + 插件列表 locale 元数据** · **竞品分析反哺**（基线门 / 契约 skip≠pass / 物理量 / 验回仪式）。
+16 个工具，测试 31 组。
+
+### 代码审查反哺批
+
 
 > 依据 `docs/FIXLOG-REVIEW-2026-11-17.md`（逐文件代码审查，总分 6.7/10）。
 
-### 修（安全）：`restore()` 路径穿越与清单未校验
+#### 修（安全）：`restore()` 路径穿越与清单未校验
 
 `batch='../..'` 可读到回收区外的 manifest；清单里的 `from` 可指向任意路径 ⇒ 恢复即任意文件移动。
 现在：批次名只允许单段、解析后必须是 trashDir 直接子目录；`items` 必须为数组；每条 `to` 必须在本批次目录内、
 `from` 必须在 DSH_HOME 内且不命中护栏（与 `apply()` 侧同等强度）。新增 `test/clean-restore.mjs` 14 项断言。
 
-### 修（正确性）：只读工具会写 `verify/last.json`
+#### 修（正确性）：只读工具会写 `verify/last.json`
 
 `audit_digest` 通过 `checkPending` 无条件落盘，既与「只读」自述矛盾，又会覆盖开机验回记录。
 拆成 `evaluatePending()`（纯算）/ `checkPending()`（落盘，`persist:false` 可关），周报改用前者。
 
-### 修（性能）：事实缓存指纹含整个 `logs/` 目录
+#### 修（性能）：事实缓存指纹含整个 `logs/` 目录
 
 宿主每写一个新日志文件目录 mtime 就变 ⇒ 缓存几乎次次失效（等于没有缓存）。改为只 stamp
 `collect()` 实际读取的 `logs/unlag-reload.log`。
 
-### 修：另外五处
+#### 修：另外五处
 
 - `spawnSync` 去掉 `shell:true`，加 `windowsHide`；
 - 面板 HTML 响应补 `nosniff` 与 CSP，`esc()` 补单引号转义；
@@ -29,18 +35,19 @@
 - `client.js` 的 `fetch` 加 `AbortController`；`history.load()` 按 size+mtime 记忆化；
   `loopbackOnly` 改显式白名单并注释空地址放行理由。
 
-### 明确没做
+#### 明确没做
 
 `index.js` 拆模块（纯结构重构，风险>收益）与格式化函数收口（会造成跨端耦合）。
 「面板并发各算一次」不成立：Node 单线程 + 同步计算。
 
-### 测试
+#### 测试
 
 新增 `test/clean-restore.mjs`（14 断言），digest 增只读断言（19）、cache 增指纹口径断言（9）；**31 组全绿**。
 
-## 未发布 — 文档漂移修复批
+### 文档漂移修复批
 
-### 修：README 与 COMPLEMENTARY 落后于代码
+
+#### 修：README 与 COMPLEMENTARY 落后于代码
 
 - README「现状」段还写着 **14 工具 / 18 组测试**，实际已是 **16 工具 / 30 组**；
   连带 `apply()` 注入路径那行也从「14 工具」改成 16。
@@ -54,7 +61,7 @@
 
 
 
-### 加：插件列表的本地化元数据（locale/*.json）
+#### 加：插件列表的本地化元数据（locale/*.json）
 
 - 新增 `locale/en.json` 与 `locale/zh.json` 的 `meta.title` / `meta.description`——
   宿主文档口径：Plugin Manager 与设置页会在**不激活插件**的前提下读这两段，
@@ -65,7 +72,7 @@
 - 守卫：新增 `test/locale-meta.mjs`（14 项断言：双基准字典、字段非空、无营销词、
   sentence case、exports/files 声明面、别为加 locale 丢了图标）。
 
-### 修：侧栏面板永远显示中文（切英文宿主也不变）
+#### 修：侧栏面板永远显示中文（切英文宿主也不变）
 
 - **根因**：`pickLocale()` 调 `loc.current()`，而运行时 `locale` 服务**没有这个方法**
   （契约只有 `getLocale / getSnapshot / subscribe / setLocale / addLanguage / register / bind`）。
@@ -81,43 +88,44 @@
 > 未动的边界：服务端渲染的网页面板与 CLI 文案仍是中文——它们不在浏览器 locale 体系里，
 > 要做得多语言是另一件事（见上一条「工具描述/报告正文不随语言切换」的说明）。
 
-## 未发布 — 竞品分析反哺批
+### 竞品分析反哺批
+
 
 > 依据 `docs/FIXLOG-COMPETITIVE-2026-11-17.md`。核心事实：竞品分析指出
 > 「`audit_check` 在一台自己判为 9.81 分的健康机器上仍然 exit=1」——一道永远红的门
 > 只有两种命运：被人 `|| true` 掉，或被人把发现一条条静音掉。
 
-### 修：CI 门从「绝对状态」改成「新问题门」（P1，借 SonarQube）
+#### 修：CI 门从「绝对状态」改成「新问题门」（P1，借 SonarQube）
 
 - `audit_check` / `--check` 默认成为**基线门**：只判相对上一次快照的新增与回归，存量不阻塞；
   新增 FAIL 永远 exit 2；新增 WARN 少于 3 条时不下判（fudge）；无基线时退回绝对门并写明原因。
 - 能力域行（`CAP-*`）标 `gating: false` 移出门禁——域冗余是「装得丰富」的结构事实，不是回归。
 - 新增 `--absolute`（老行为）与每条 check 的 `fresh` 标记；实测健康机器 `exit 1 → 0`。
 
-### 修：契约两处语义失真（P4，借 RFC #1846）
+#### 修：契约两处语义失真（P4，借 RFC #1846）
 
 - **UNKNOWN 不再落 PASS**：INFO+UNKNOWN → WARN（skip≠pass）。绝对门下 PASS 22→16、WARN 10→16。
 - 信封补 doctor 的顶层字段：`schema` / `generatedAt` / `profile` / `exitCode` / `summary{...}`，
   保留 `contract` 与 `doctor.exit`（老读者不变）。
 - `remediation` 为 opt-in 有序修法数组（`--check --remediation`），不请求时字段完全不出现。
 
-### 改：建议带上物理量（P2，借 Lighthouse）
+#### 改：建议带上物理量（P2，借 Lighthouse）
 
 - `plan.rows[].saves`：R17→`省 N MB`、R15→`少 N 个服务插件`、R16→`每轮省 token（待测 · 涉及 N 套）`，
   其余为 `null`。**拿不到物理量就写待测，不许编数字。**
 
-### 改：验回仪式（P5，借 Snyk Fix Rate）
+#### 改：验回仪式（P5，借 Snyk Fix Rate）
 
 - `audit_digest` 在采纳率为 0/算不出来时直接给出仪式提示（真修一条 → 重启 → 看采纳率）；
   README 新增四步「验回仪式」。
 
-### 不做：注入采样（P3）
+#### 不做：注入采样（P3）
 
 - 宿主 `tokenMeter` 的 `measure/contextPressure` 都要 `Session` 实例，工具上下文拿不到句柄；
   静态估算会把「估」当「测」，故不做。补偿：R16 的 fixHint 改成给出具体去处
   （宿主 `tokenMeter.contextPressure` 或第三方 `dsh-context-budget`）。
 
-### 测试
+#### 测试
 
 - 新增 `test/gate.mjs`（26 项断言）；`test/score.mjs` 增 4 条 saves 断言；`test/digest.mjs` 增 CLI 接线断言。
 
