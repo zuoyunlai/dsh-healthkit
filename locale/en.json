@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "DSH health check",
+    "description": "Read-only checkup for DeepSeek Harness: a 0–10 score across seven weighted dimensions, findings with fix hints, cross-restart verification of whether past findings were fixed, and a baseline CI gate that only fails on new problems."
+  }
+}

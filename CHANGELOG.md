@@ -2,6 +2,17 @@
 
 ## 未发布 — 面板语言修复批
 
+### 加：插件列表的本地化元数据（locale/*.json）
+
+- 新增 `locale/en.json` 与 `locale/zh.json` 的 `meta.title` / `meta.description`——
+  宿主文档口径：Plugin Manager 与设置页会在**不激活插件**的前提下读这两段，
+  缺了就只能回落到 `package.json` 的 name/description，英文宿主下会看到中文标题。
+- `package.json` 补 `exports["./locale/*.json"]` 与 `files` 里的 `locale/*.json`
+  （不导出读不到，不进 files 发布后就丢）。`npm pack --dry-run` 实测两份都在包里。
+- 英文标题按文档要求用 sentence case（`DSH health check`，`DSH` 作为专有名词例外）。
+- 守卫：新增 `test/locale-meta.mjs`（14 项断言：双基准字典、字段非空、无营销词、
+  sentence case、exports/files 声明面、别为加 locale 丢了图标）。
+
 ### 修：侧栏面板永远显示中文（切英文宿主也不变）
 
 - **根因**：`pickLocale()` 调 `loc.current()`，而运行时 `locale` 服务**没有这个方法**

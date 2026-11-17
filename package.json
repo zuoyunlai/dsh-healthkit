@@ -31,6 +31,7 @@
     ".": "./index.js",
     "./icon": "./logo.svg",
     "./logo.svg": "./logo.svg",
+    "./locale/*.json": "./locale/*.json",
     "./client": "./client.js",
     "./client.js": "./client.js",
     "./engine": "./src/engine.mjs",
@@ -44,6 +45,7 @@
     "index.js",
     "client.js",
     "logo.svg",
+    "locale/*.json",
     "cordis.patch.yml",
     "src/*.mjs",
     "bin/audit.mjs",
@@ -56,7 +58,7 @@
   ],
   "scripts": {
     "audit": "node ./bin/audit.mjs",
-    "test": "node ./test/rules-on-fixture.mjs && node ./test/invariants.mjs && node ./test/reportpath.mjs && node ./test/version-guard.mjs && node ./test/migrate-guard.mjs && node ./test/tools-shape.mjs && node ./test/panel.mjs && node ./test/apply-inject.mjs && node ./test/capability-map.mjs && node ./test/false-positive-zone.mjs && node ./test/degradation.mjs && node ./test/snapshot.mjs && node ./test/portability.mjs && node ./test/r22-local-deps.mjs && node ./test/verify.mjs && node ./test/report-json.mjs && node ./test/recommend.mjs && node ./test/clean-symlink.mjs && node ./test/clean-guard.mjs && node ./test/profile-errors.mjs && node ./test/score.mjs && node ./test/cache.mjs && node ./test/layering.mjs && node ./test/panel-contract.mjs && node ./test/digest.mjs && node ./test/feedback.mjs && node ./test/metrics.mjs && node ./test/gate.mjs"
+    "test": "node ./test/rules-on-fixture.mjs && node ./test/invariants.mjs && node ./test/reportpath.mjs && node ./test/version-guard.mjs && node ./test/migrate-guard.mjs && node ./test/tools-shape.mjs && node ./test/panel.mjs && node ./test/apply-inject.mjs && node ./test/capability-map.mjs && node ./test/false-positive-zone.mjs && node ./test/degradation.mjs && node ./test/snapshot.mjs && node ./test/portability.mjs && node ./test/r22-local-deps.mjs && node ./test/verify.mjs && node ./test/report-json.mjs && node ./test/recommend.mjs && node ./test/clean-symlink.mjs && node ./test/clean-guard.mjs && node ./test/profile-errors.mjs && node ./test/score.mjs && node ./test/cache.mjs && node ./test/layering.mjs && node ./test/panel-contract.mjs && node ./test/digest.mjs && node ./test/feedback.mjs && node ./test/metrics.mjs && node ./test/gate.mjs && node ./test/locale-meta.mjs"
   },
   "dsh": {
     "bundle": {
