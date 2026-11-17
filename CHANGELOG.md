@@ -1,5 +1,43 @@
 # CHANGELOG
 
+## 未发布 — 代码审查反哺批
+
+> 依据 `docs/FIXLOG-REVIEW-2026-11-17.md`（逐文件代码审查，总分 6.7/10）。
+
+### 修（安全）：`restore()` 路径穿越与清单未校验
+
+`batch='../..'` 可读到回收区外的 manifest；清单里的 `from` 可指向任意路径 ⇒ 恢复即任意文件移动。
+现在：批次名只允许单段、解析后必须是 trashDir 直接子目录；`items` 必须为数组；每条 `to` 必须在本批次目录内、
+`from` 必须在 DSH_HOME 内且不命中护栏（与 `apply()` 侧同等强度）。新增 `test/clean-restore.mjs` 14 项断言。
+
+### 修（正确性）：只读工具会写 `verify/last.json`
+
+`audit_digest` 通过 `checkPending` 无条件落盘，既与「只读」自述矛盾，又会覆盖开机验回记录。
+拆成 `evaluatePending()`（纯算）/ `checkPending()`（落盘，`persist:false` 可关），周报改用前者。
+
+### 修（性能）：事实缓存指纹含整个 `logs/` 目录
+
+宿主每写一个新日志文件目录 mtime 就变 ⇒ 缓存几乎次次失效（等于没有缓存）。改为只 stamp
+`collect()` 实际读取的 `logs/unlag-reload.log`。
+
+### 修：另外五处
+
+- `spawnSync` 去掉 `shell:true`，加 `windowsHide`；
+- 面板 HTML 响应补 `nosniff` 与 CSP，`esc()` 补单引号转义；
+- **退役的 P0/P1 不再一律 PASS**（降为 WARN，可见但不阻塞）——防「误记档把严重问题绿掉」；
+- 周报的 `productMetrics` 只算一次（原先两次各读一遍账本）；
+- `client.js` 的 `fetch` 加 `AbortController`；`history.load()` 按 size+mtime 记忆化；
+  `loopbackOnly` 改显式白名单并注释空地址放行理由。
+
+### 明确没做
+
+`index.js` 拆模块（纯结构重构，风险>收益）与格式化函数收口（会造成跨端耦合）。
+「面板并发各算一次」不成立：Node 单线程 + 同步计算。
+
+### 测试
+
+新增 `test/clean-restore.mjs`（14 断言），digest 增只读断言（19）、cache 增指纹口径断言（9）；**31 组全绿**。
+
 ## 未发布 — 文档漂移修复批
 
 ### 修：README 与 COMPLEMENTARY 落后于代码

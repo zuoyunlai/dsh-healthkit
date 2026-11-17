@@ -59,5 +59,16 @@ const e2 = audit({ scenario: 'general' });
 ok('DSH_HEALTHKIT_NO_CACHE=1 时两次必须各自采集（不同对象）', e1.facts !== e2.facts);
 delete process.env.DSH_HEALTHKIT_NO_CACHE;
 
+// ⑥ 指纹口径（审查 P1-3）：无关日志文件不该让缓存失效；collect 真读的那个必须让指纹变
+{
+  const { fingerprint } = await import('../src/cache.mjs');
+  const fp0 = fingerprint(home);
+  fs.mkdirSync(path.join(home, 'logs'), { recursive: true });
+  fs.writeFileSync(path.join(home, 'logs', 'unrelated.log'), 'noise');
+  ok('新建无关日志文件不该改变指纹', fingerprint(home) === fp0);
+  fs.writeFileSync(path.join(home, 'logs', 'unlag-reload.log'), 'served 3 plugins');
+  ok('改 unlag-reload.log 必须让指纹变化', fingerprint(home) !== fp0);
+}
+
 fs.rmSync(home, { recursive: true, force: true });
 console.log('cache: 通过（' + n + ' 项断言 · TTL 复用 + 指纹失效 + 两条旁路）');

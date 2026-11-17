@@ -29,9 +29,12 @@ function stamp(p) {
 export function fingerprint(home) {
   const h = home || dshHome();
   const parts = [];
-  for (const n of ['cordis.yml', 'cordis.patch.yml', 'cordis.patch.yaml', 'profiles', 'data', 'cache', '_backup', 'remote-workspaces', 'logs']) {
+  for (const n of ['cordis.yml', 'cordis.patch.yml', 'cordis.patch.yaml', 'profiles', 'data', 'cache', '_backup', 'remote-workspaces']) {
     parts.push(n + '=' + stamp(path.join(h, n)));
   }
+  // 2026-11-17 审查 P1-3：不要 stamp 整个 logs/（新建任何日志文件都会改目录 mtime，
+  // 缓存因此几乎次次失效）。collect 只读这一个文件，就只 stamp 它。
+  parts.push('log:unlag-reload.log=' + stamp(path.join(h, 'logs', 'unlag-reload.log')));
   let profs = [];
   try {
     profs = fs.readdirSync(path.join(h, 'profiles'), { withFileTypes: true })

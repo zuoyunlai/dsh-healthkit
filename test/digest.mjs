@@ -82,6 +82,18 @@ const binSrc = fs.readFileSync(new URL('../bin/audit.mjs', import.meta.url), 'ut
 ok('CLI 必须写待验清单（否则 audit_verify 只在工具面才有活干）', /writePending\(/.test(binSrc));
 ok('CLI 必须支持 --source 与 --no-record', /--source/.test(binSrc) && /no-record/.test(binSrc));
 
+// ⑤ 只读承诺：digest 不许写 verify/last.json（审查 P1-2：原先它会覆盖开机验回记录）
+{
+  const lastPath = path.join(home, 'dsh-healthkit', 'verify', 'last.json');
+  const h2 = fs.mkdtempSync(path.join(os.tmpdir(), 'hk-digest-pure-'));
+  const r2 = { findings: [F('R10', 'P2')], retired: [], score: { total: 9.8, raw: 9.8, band: '良好', p0Open: 0 }, facts: { home: h2 } };
+  writeRun(r2, { home: h2, scenario: 'general', version: 't' });
+  buildDigest(r2, { home: h2 });
+  ok('digest 不许创建 verify/last.json', !fs.existsSync(path.join(h2, 'dsh-healthkit', 'verify', 'last.json')));
+  fs.rmSync(h2, { recursive: true, force: true });
+  void lastPath;
+}
+
 fs.rmSync(home, { recursive: true, force: true });
 delete process.env.DSH_HEALTHKIT_NO_CACHE;
 console.log('digest: 通过（' + n + ' 项断言 · 首屏结论化 + 差异周报 + 待验清单 + R17 出口 + CLI 接线）');

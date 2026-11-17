@@ -80,7 +80,17 @@ function trim() {
   } catch (e) { return 0; }
 }
 
+// 审查 P3-3：stats()/面板/周报每次都 load() 一遍全量账本。按「文件 size+mtime」记忆化，
+// 文件一变（append/trim）键就变，不会读到旧数据。
+let loadMemo = { key: null, rows: [] };
+
 export function load() {
+  let key = null;
+  try {
+    const st = fs.statSync(historyPath());
+    key = st.size + ':' + st.mtimeMs;
+  } catch (e) { key = 'missing'; }
+  if (loadMemo.key === key) return loadMemo.rows;
   const out = [];
   try {
     const txt = fs.readFileSync(historyPath(), 'utf8');
@@ -89,6 +99,7 @@ export function load() {
       try { out.push(JSON.parse(line)); } catch (e) { /* 坏行跳过 */ }
     }
   } catch (e) { /* 没有账本 */ }
+  loadMemo = { key: key, rows: out };
   return out;
 }
 

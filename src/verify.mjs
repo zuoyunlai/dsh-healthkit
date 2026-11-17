@@ -85,7 +85,9 @@ export function hasPendingTargets(home) {
   return !!(pending && Array.isArray(pending.targets) && pending.targets.length > 0);
 }
 
-export function checkPending(result, opts) {
+// 纯计算：只算 fixed / stillThere / muted / regressions，**不落盘**。
+// 只读消费者（audit_digest）必须用它——否则会覆盖真正的开机验回记录。
+export function evaluatePending(result, opts) {
   const o = opts || {};
   const home = o.home;
   const pending = readJson(pendingPath(home), null);
@@ -138,7 +140,14 @@ export function checkPending(result, opts) {
     regressions,
     note: '只报告，不改配置：fixed=真修好，muted=被退役记档（不算修好），stillThere=还在，regressions=本次新冒出来的 P0/P1。',
   };
-  writeJson(lastVerifyPath(home), rec);
+  return rec;
+}
+
+// 保留旧名字与旧行为（开机验回要留档）。想只算不落，用 evaluatePending 或 persist:false。
+export function checkPending(result, opts) {
+  const o = opts || {};
+  const rec = evaluatePending(result, o);
+  if (o.persist !== false && o.home) writeJson(lastVerifyPath(o.home), rec);
   return rec;
 }
 

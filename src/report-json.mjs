@@ -24,7 +24,9 @@ import path from 'node:path';
 // R21e 未安装无法判断）被报成了通过——与它自己「不猜」的立场自相矛盾。
 function statusOf(f) {
   if (f.advisory === true) return 'PASS';
-  if (f.retired) return 'PASS';
+  // 退役 = 显式豁免，但不能把「严重问题被误记档」也变成绿灯：
+  // P0/P1 退役后降为 WARN（可见、不阻塞），P2/INFO 才是 PASS。
+  if (f.retired) return (f.severity === 'P0' || f.severity === 'P1') ? 'WARN' : 'PASS';
   if (f.severity === 'P0' || f.severity === 'P1') return 'FAIL';
   if (f.severity === 'P2') return 'WARN';
   return f.confidence === 'UNKNOWN' ? 'WARN' : 'PASS';

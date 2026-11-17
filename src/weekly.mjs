@@ -11,7 +11,7 @@
 //
 // 只读：不写账本、不写快照、不改配置。记账由 audit_run / CLI 负责。
 import { latestRun, diffRuns } from './snapshot.mjs';
-import { checkPending } from './verify.mjs';
+import { evaluatePending } from './verify.mjs';
 import { headlineOf, countBySeverity, pickTopActions } from './digest.mjs';
 import { stats as feedbackStats, renderStats as renderFeedback } from './feedback.mjs';
 import { productMetrics } from './metrics.mjs';
@@ -63,7 +63,8 @@ export function buildDigest(result, opts) {
   // ② 上次说该修的，现在怎样
   let verify = null;
   try {
-    const v = checkPending(result, { home: home });
+    // 只算不落：周报是只读消费者，不许覆盖开机验回记录（2026-11-17 审查 P1-2）。
+    const v = evaluatePending(result, { home: home });
     if (v && v.hasPending) {
       verify = {
         checked: (v.checked || []).length,
@@ -88,15 +89,17 @@ export function buildDigest(result, opts) {
     if (fs1.answered > 0) feedback = { stats: fs1, text: renderFeedback(fs1) };
   } catch (e) { feedback = null; }
 
-  // 产品指标（§5 的 2/3 + 误报率）：能算才出现，算不出来不当噪声。
+  // 产品指标（§5 的 2/3 + 误报率）：算一次，metrics 与仪式提示共用（审查 P2-4：
+  // 原先这里和下面各算一次，每次都重读 history + retirements）。
   let metrics = null;
+  let product = null;
   try {
-    const m = productMetrics(home, { findingsCount: findings.length });
-    const sr = m.secondRun || {};
-    const ad = m.adoption || {};
-    const fpv = m.falsePositive || {};
-    if (sr.returnedAfter7d !== null || typeof ad.rate === 'number' || typeof fpv.rate === 'number') metrics = m;
-  } catch (e) { metrics = null; }
+    product = productMetrics(home, { findingsCount: findings.length });
+    const sr = product.secondRun || {};
+    const ad = product.adoption || {};
+    const fpv = product.falsePositive || {};
+    if (sr.returnedAfter7d !== null || typeof ad.rate === 'number' || typeof fpv.rate === 'number') metrics = product;
+  } catch (e) { metrics = null; product = null; }
 
   const top = pickTopActions(findings, o.limit || 3);
   const lines = [];
@@ -109,8 +112,7 @@ export function buildDigest(result, opts) {
   // 而不是让仪表上那个 0 一直挂着没人管。
   let ritual = null;
   try {
-    const m2 = productMetrics(home, { findingsCount: findings.length });
-    const ad = (m2 && m2.adoption) || {};
+    const ad = (product && product.adoption) || {};
     if (typeof ad.rate !== 'number' || ad.rate === 0) {
       ritual = '验回仪式：采纳率现在是 ' + (typeof ad.rate === 'number' ? ad.rate + '%' : '算不出来')
         + '。把上次说该修的那几条里**真修掉一条**，重启宿主让验回跑一次，这个数才会从 0 变成证据。';

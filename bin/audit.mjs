@@ -32,7 +32,8 @@ function dumpBundle(h, bundle) {
     fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(path.join(dir, 'cordis.yml'), '[]\n');
     fs.writeFileSync(path.join(dir, 'package.json'), JSON.stringify({ name: 'dsh-profile-probe', private: true, dsh: { profile: { bundles: bundles } } }, null, 2) + '\n');
-    var r = spawnSync('dsh', ['--profile', 'probe', '--dump-config'], { encoding: 'utf8', shell: true, timeout: 60000 });
+    // 不走 shell：参数是字面量，多一层 cmd.exe/sh 只增加拼接面与噪音；windowsHide 免黑框。
+    var r = spawnSync('dsh', ['--profile', 'probe', '--dump-config'], { encoding: 'utf8', shell: false, windowsHide: true, timeout: 60000 });
     if (r.status !== 0 || !r.stdout) return null;
     return r.stdout.split(/\r?\n/).filter(function (l) { return /^- id: /.test(l); }).map(function (l) { return l.replace(/^- id:\s*/, '').trim(); });
   } catch (e) { return null; }

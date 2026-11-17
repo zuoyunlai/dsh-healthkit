@@ -64,14 +64,24 @@ function sendJson(res, status, obj) {
 }
 
 function sendHtml(res, html) {
-  res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
+  res.writeHead(200, {
+    'content-type': 'text/html; charset=utf-8',
+    'cache-control': 'no-store',
+    // 第二道防线：页面零脚本、零外链，禁掉嗅探与一切外部资源。
+    'x-content-type-options': 'nosniff',
+    'content-security-policy': "default-src 'none'; style-src 'unsafe-inline'; img-src 'self' data:",
+  });
   res.end(html);
 }
 
 // 只认本机回环：面板是本地运维面，不该从局域网可达。
+const LOOPBACK = ['127.0.0.1', '::1', '::ffff:127.0.0.1'];
 function loopbackOnly(req) {
   const a = (req && req.socket && req.socket.remoteAddress) || '';
-  return a === '127.0.0.1' || a === '::1' || a === '::ffff:127.0.0.1' || a === '';
+  // 空地址只出现在 Unix socket / 无 socket 的极端情况（如进程内调用）：
+  // 这是有意放行的，因为它不经过网络；真要收紧就把下面这行删掉。
+  if (a === '') return true;
+  return LOOPBACK.indexOf(a) !== -1;
 }
 
 function clip(v, max) {
@@ -333,7 +343,9 @@ const esc = (s) => String(s == null ? '' : s)
   .replace(/&/g, '&amp;')
   .replace(/</g, '&lt;')
   .replace(/>/g, '&gt;')
-  .replace(/"/g, '&quot;');
+  .replace(/"/g, '&quot;')
+  // 单引号也转义：现在所有属性都是双引号，但「今天没有单引号属性」不是安全前提。
+  .replace(/'/g, '&#39;');
 
 const SEVS = ['P0', 'P1', 'P2', 'INFO'];
 

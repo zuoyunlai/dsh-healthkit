@@ -234,17 +234,43 @@ export function listBatches() {
   return out;
 }
 
+// 批次名只允许单段：`../..` 这类会让 trashDir() 之外的 manifest 被读、被按它搬文件。
+const BATCH_NAME_RE = /^[A-Za-z0-9._-]{1,80}$/;
+
 export function restore(batch) {
-  if (!batch) return { ok: false, error: '要还原哪个批次？先跑 list' };
-  const dir = path.join(trashDir(), String(batch));
+  const name = String(batch || '').trim();
+  if (!name) return { ok: false, error: '要还原哪个批次？先跑 list' };
+  if (!BATCH_NAME_RE.test(name) || name === '.' || name === '..') {
+    return { ok: false, error: '非法批次名（只允许单段目录名）：' + name };
+  }
+  const root = path.resolve(trashDir());
+  const dir = path.join(root, name);
+  if (path.dirname(path.resolve(dir)) !== root) {
+    return { ok: false, error: '批次目录越界：' + name };
+  }
   const m = readJson(path.join(dir, 'manifest.json'), null);
-  if (!m) return { ok: false, error: '批次不存在或清单损坏：' + batch };
+  if (!m) return { ok: false, error: '批次不存在或清单损坏：' + name };
+  if (!Array.isArray(m.items)) return { ok: false, error: '清单没有 items 数组，拒绝还原：' + name };
   const restored = [];
   const conflicts = [];
   const keep = [];
   for (const it of m.items) {
-    if (!exists(it.to)) { keep.push(it); continue; }
-    if (exists(it.from)) { conflicts.push(it.from + '：原位置已有同名，跳过'); keep.push(it); continue; }
+    // 清单是「数据」，不是「授权」：两端都必须落在本批次目录 / DSH_HOME 内，
+    // 且目标位置不能命中护栏。apply() 侧早就有这两道校验，restore 侧此前是裸的。
+    const to = path.resolve(String((it && it.to) || ''));
+    const from = path.resolve(String((it && it.from) || ''));
+    if (to !== dir && to.indexOf(dir + path.sep) !== 0) {
+      conflicts.push(String(it && it.to) + '：不在本批次目录内，跳过');
+      keep.push(it);
+      continue;
+    }
+    if (!insideHome(from) || forbidden(from)) {
+      conflicts.push(String(it && it.from) + '：目标位置越界或命中护栏，跳过');
+      keep.push(it);
+      continue;
+    }
+    if (!exists(to)) { keep.push(it); continue; }
+    if (exists(from)) { conflicts.push(from + '：原位置已有同名，跳过'); keep.push(it); continue; }
     try {
       moveEntry(it.to, it.from);
       restored.push(it.from);

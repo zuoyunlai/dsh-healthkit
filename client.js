@@ -427,11 +427,19 @@ window.__ModuleLoader__.load({
       }, summary, h('div', { style: { marginTop: 7, paddingTop: 7, borderTop: '1px solid ' + C.line } }, body));
     }
 
+    // 只有最近一次请求算数（见 load 里的 abort）。
+    let currentAbort = null;
+
     function useSummary() {
       const [state, setState] = useState({ loading: true, data: null, error: null });
+      // P3-2：面板可能被卸载/重挂（keepMounted + 双 key 注册），旧请求回来会对着
+      // 已卸载组件 setState。用一个模块级 AbortController 让新请求中止旧请求。
       const load = useCallback(function () {
         setState(function (s) { return { loading: true, data: s.data, error: null }; });
-        fetch(API, { cache: 'no-store' })
+        try { if (currentAbort) currentAbort.abort(); } catch (e) { /* ignore */ }
+        currentAbort = typeof AbortController === 'function' ? new AbortController() : null;
+        const signal = currentAbort ? currentAbort.signal : undefined;
+        fetch(API, { cache: 'no-store', signal })
           .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
           .then(function (d) { setState({ loading: false, data: d, error: null }); })
           // 一次 60 秒缓存窗口里的瞬时失败，不该把「有内容的只读面板」整屏换成错误页：
