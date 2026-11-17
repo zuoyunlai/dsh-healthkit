@@ -34,3 +34,12 @@
 - **教训**：`inject` 回调的幂等旗必须在**同步段**立起来。任何「等 await / 动态 import 之后再判断」
   的守卫都挡不住重入——这和「乐观锁要写在临界区入口」是同一类错误。
 
+## #3（运维坑，2026-11-17）npm 发布成功后 registry 仍 404 约 10 分钟
+
+- **现象**：0.12.1 的 publish 作业在 02:25Z 已打印 `+ dsh-healthkit@0.12.1`，但
+  `https://registry.npmjs.org/dsh-healthkit/0.12.1` 连续两次 404，约 10 分钟后才 200；
+  packument 的 `dist-tags` 也是之后才更新。
+- **误判风险**：此时若重推 tag 会撞 `E409`（版本号已预留）；若改版本号重发会白占一个版本。
+- **判据**：以 CI 日志里的 `+ pkg@version` 与 `shasum` 为准；`npm view` / registry 404 只是传播延迟。
+- **顺带**：`setup-node` 会注入占位 `NODE_AUTH_TOKEN`（日志里 `XXXXX-...`），
+  这不代表用了 token 认证——看 npm 元数据的 `_npmUser.trustedPublisher` 才准。

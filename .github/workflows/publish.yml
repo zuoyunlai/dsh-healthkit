@@ -55,7 +55,12 @@ jobs:
       - name: 测试
         run: npm test
 
-      # 不设 NODE_AUTH_TOKEN：设了反而会走 token 认证，破坏 OIDC。
+      # 发布走 OIDC（id-token: write），不需要、也不该配长期 token。
+      # 注意：setup-node 仍会注入一个**占位** NODE_AUTH_TOKEN，运行日志里能看到 `XXXXX-...`，
+      # 这是正常的，不代表用了 token 认证。判断真伪只看 npm 上的 _npmUser：
+      # 含 trustedPublisher 才是 OIDC 发的；显示某个用户名就是 token 发的。
+      # 另：发布成功后 registry 传播有延迟（2026-11-17 实测约 10 分钟，
+      # 期间 registry.npmjs.org/<pkg>/<version> 会 404），别据此判定发布失败。
       - name: 发布（OIDC + provenance）
         if: steps.exists.outputs.skip != '1'
         run: npm publish --provenance --access public
