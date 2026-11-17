@@ -55,7 +55,7 @@ function buildIndex(h) {
 }
 
 var USAGE = [
-  'dsh-healthkit —— DSH 体检（只读评分 / 可还原清理 / 分数趋势）',
+  'dsh-healthkit —— DSH 体检（升级后验回 / 只读评分 / 快照回滚 / 可还原清理）',
   '',
   '用法：',
   '  dsh-healthkit                   跑一次体检，写 AUDIT-<日期>.md 并记账',
@@ -95,7 +95,7 @@ var USAGE = [
   '',
   '作者侧（发布前自检，不需要装 DSH）：',
   '  dsh-healthkit --preflight <插件仓> [--json]   exit 0 可发 / 1 有警告 / 2 先别发',
-  '  dsh-healthkit --matrix [--out docs/MATRIX.md] 规则矩阵（24 条规则 × 体检/探针/清理/门禁）',
+  '  dsh-healthkit --matrix [--out docs/MATRIX.md] 规则矩阵（规则 × 体检/探针/清理/门禁，真源 src/rules.mjs）',
   '',
   '解释与规划：',
   '  dsh-healthkit --findings [--severity P1] [--limit N]',
