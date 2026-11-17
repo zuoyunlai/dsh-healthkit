@@ -297,7 +297,10 @@ export function runRules(facts, allowlist) {
     out.push(F({ ruleId: 'R16', dimension: 'context', severity: 'P2',
       title: '同时挂载 ' + uniqMem.length + ' 套记忆/上下文插件，每轮固定注入开销未量化',
       evidence: [facts.home + '/profiles'], measured: { bundles: uniqMem }, confidence: 'MEDIUM',
-      fixHint: '需宿主内采样每轮注入 token；定主备后关掉其余自动注入' }));
+      // 竞品分析 P3：本插件拿不到 Session 句柄（tokenMeter 的三个方法全要 Session），
+      // 所以「每轮注入多少 token」它测不了——不许猜，但也不再把这个任务丢回给用户：
+      // 给出生态里已经能取到这个数的具体去处。
+      fixHint: 'token 侧不猜：宿主的 tokenMeter.contextPressure 或第三方 dsh-context-budget 能给出每轮注入实测值；本插件拿不到 Session 句柄，只给「几套插件同时在注入」这个可测事实。定主备后关掉其余自动注入。' }));
   } else if (!uniqMem.length) {
     out.push(F({ ruleId: 'R16', dimension: 'context', severity: 'INFO', title: '未发现记忆/上下文插件', confidence: 'UNKNOWN' }));
   }

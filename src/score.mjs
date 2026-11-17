@@ -89,6 +89,19 @@ export function score(rubric, findings, scenario) {
 }
 
 
+// 一条修法能省下多少「物理量」。只认已经测得出来的；测不出的返回 null（显示为「待测」）。
+function savesOf(f) {
+  const m = (f && f.measured) || {};
+  if (f.ruleId === 'R17' && typeof m.mb === 'number' && m.mb > 0) return '省 ' + m.mb + ' MB';
+  if (f.ruleId === 'R15' && typeof m.served === 'number' && typeof m.bundles === 'number' && m.served > m.bundles) {
+    return '少 ' + (m.served - m.bundles) + ' 个服务插件';
+  }
+  if (f.ruleId === 'R16' && Array.isArray(m.bundles) && m.bundles.length) {
+    return '每轮省 token（待测 · 涉及 ' + m.bundles.length + ' 套）';
+  }
+  return null;
+}
+
 // 「修哪条、涨多少」：用同一套 rubric 做反事实重算，不另立公式。
 // 分两步：① 先解 P0 封顶（整组）；② 在解封后的基准上算每条 P1 的边际收益。
 // 为什么不混着算：总分被封顶时，单条 P1 的真实分数增量恒为 0，混着算会得到一列假 +0。
@@ -119,7 +132,12 @@ export function attribution(rubric, findings, sc) {
     var d = round(s2.total - base);
     var dr = round(s2.raw - baseRaw);
     if (d === 0 && dr === 0) return;
-    rows.push({ fp: f.fp, ruleId: f.ruleId, severity: f.severity, title: f.title, target: f.target || '', delta: d, deltaRaw: dr });
+    // 竞品分析 P2（借 Lighthouse 的 Opportunities）：光说「+0.13 分」驱动不了人，
+    // 能说「省 200MB / 少 13 个服务插件」才有用。拿不到物理量就写「待测」，不许编数字。
+    rows.push({
+      fp: f.fp, ruleId: f.ruleId, severity: f.severity, title: f.title, target: f.target || '',
+      delta: d, deltaRaw: dr, saves: savesOf(f),
+    });
   });
   rows.sort(function (a, b) { return (b.delta - a.delta) || (b.deltaRaw - a.deltaRaw); });
 

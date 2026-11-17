@@ -85,4 +85,23 @@ ok('归因必须给出解封顶那一步（5.0 → 9.0）',
 ok('归因的行必须是单条边际', Array.isArray(at.rows) && at.rows.length === 2);
 ok('归因潜力分必须 ≥ 当前分', typeof at.potentialAll === 'number' && at.potentialAll >= sc.total);
 
+// P2（借 Lighthouse 的 Opportunities）：每条贡献要么给物理量，要么明确 null（=「待测」），
+// 不许编数字。这里造三条已知形态的发现来钉口径。
+{
+  const f2 = [
+    { ruleId: 'R17', dimension: 'd1', severity: 'P2', title: '大目录', fp: 'R17#a', measured: { mb: 203 }, confidence: 'MEASURED', evidence: [] },
+    { ruleId: 'R15', dimension: 'd1', severity: 'P2', title: '服务插件超限', fp: 'R15#a', measured: { served: 56, bundles: 43 }, confidence: 'MEASURED', evidence: [] },
+    { ruleId: 'R16', dimension: 'd1', severity: 'P2', title: '多套记忆', fp: 'R16#a', measured: { bundles: ['a', 'b', 'c'] }, confidence: 'MEDIUM', evidence: [] },
+    { ruleId: 'R10', dimension: 'd1', severity: 'P2', title: '无物理量', fp: 'R10#a', measured: {}, confidence: 'MEASURED', evidence: [] },
+  ];
+  const sc2 = score(mkRubric(), f2, 'general');
+  const at2 = attribution(mkRubric(), f2, sc2);
+  const by = {};
+  at2.rows.forEach((r) => { by[r.ruleId] = r.saves; });
+  ok('R17 的 saves 要用 MB', String(by.R17 || '').indexOf('MB') !== -1, String(by.R17));
+  ok('R15 的 saves 要用「少 N 个服务插件」', String(by.R15 || '').indexOf('服务插件') !== -1, String(by.R15));
+  ok('R16 的 saves 标「待测」，不许编 token 数', /待测/.test(String(by.R16 || '')), String(by.R16));
+  ok('没有物理量的规则 saves 必须是 null', by.R10 === null, String(by.R10));
+}
+
 console.log('score: 通过（' + n + ' 项断言 · 罚分/折扣/维度封顶/P0封顶/丢弃项/rubric自检/归因）');

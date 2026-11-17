@@ -147,10 +147,23 @@ const CHECK_SCHEMA = {
   properties: {
     ok: { type: 'boolean' },
     contract: { type: 'string' },
+    schema: { type: 'string' },
     exit: { type: 'number' },
+    exitCode: { type: 'number' },
+    mode: { type: 'string' },
+    profile: { type: 'string' },
+    generatedAt: { type: 'string' },
     pass: { type: 'number' },
     warn: { type: 'number' },
     fail: { type: 'number' },
+    newFail: { type: 'number' },
+    newWarn: { type: 'number' },
+    suppressed: { type: 'number' },
+    fudged: { type: 'boolean' },
+    baselineAt: { type: 'string' },
+    baselineScore: { type: 'number' },
+    note: { type: 'string' },
+    remediation: { type: 'array', items: { type: 'string' } },
     items: { type: 'array', items: { type: 'string' } },
     summary: { type: 'string' },
   },
@@ -1018,11 +1031,14 @@ export function buildTools(deps) {
   },
   {
     name: 'audit_check',
-    description: 'CI 门禁形态：按生态三值契约（PASS/WARN/FAIL + 退出码 0/1/2）给出体检结论，与 dsh-plugin-doctor 的 --format check 同形，可被同一套 CI/Action 消费。P0/P1=FAIL，P2=WARN，INFO 与已退役= PASS',
+    description: 'CI 门禁形态：按生态三值契约（PASS/WARN/FAIL + 退出码 0/1/2）给出体检结论。默认是**基线门**——只判相对上一次快照的新增与回归（同 SonarQube 的 new-code gate），存量问题不计入门；新增少于 3 条 WARN 时不下判（fudge），新增 FAIL 永不放过。P0/P1=FAIL，P2=WARN，UNKNOWN=WARN（判不了不当通过），MEASURED 的 INFO 与已退役=PASS',
     parameters: {
       type: 'object',
       properties: {
         scenario: { type: 'string', description: 'general|code|design|writing，缺省 general' },
+        baseline: { type: 'string', description: 'auto（缺省，相对上一次快照只看新增）| none（绝对状态门，老行为）' },
+        remediation: { type: 'boolean', description: '是否附有序修法清单 remediation（缺省 false；为 false 时该字段完全不出现）' },
+        fresh: { type: 'boolean', description: 'true = 绕过事实缓存，立刻重新采集' },
       },
       additionalProperties: false,
     },
@@ -1033,30 +1049,74 @@ export function buildTools(deps) {
       },
     },
     execute: async (args) => {
+      const a = args || {};
       const { audit } = await import('./src/engine.mjs');
-      const { buildCheckEnvelope } = await import('./src/report-json.mjs');
-      const r = audit({ scenario: (args && args.scenario) || 'general' });
-      const env = buildCheckEnvelope(r, { version: r.self && r.self.version });
+      const { buildGateEnvelope } = await import('./src/report-json.mjs');
+      const r = audit({ scenario: a.scenario || 'general', fresh: a.fresh === true });
+      let baseline = null;
+      if (a.baseline !== 'none') {
+        try {
+          const snap = await import('./src/snapshot.mjs');
+          const prev = snap.latestRun(r.facts.home);
+          if (prev) {
+            baseline = {
+              at: prev.at || null,
+              score: typeof prev.score === 'number' ? prev.score : null,
+              fps: (prev.findings || []).map((f) => f.fp).filter(Boolean),
+            };
+          }
+        } catch (e) { baseline = null; }
+      }
+      const env = buildGateEnvelope(r, {
+        version: r.self && r.self.version,
+        baseline,
+        remediation: a.remediation === true,
+      });
       const by = { PASS: 0, WARN: 0, FAIL: 0 };
       env.checks.forEach((c) => { by[c.status] = (by[c.status] || 0) + 1; });
       const L = [];
-      L.push('契约 ' + env.contract + ' · 退出码 ' + env.doctor.exit + '（0 全过 / 1 有 WARN / 2 有 FAIL）');
-      L.push('PASS ' + by.PASS + ' · WARN ' + by.WARN + ' · FAIL ' + by.FAIL + '（共 ' + env.checks.length + ' 项）');
-      const bad = env.checks.filter((c) => c.status !== 'PASS');
+      L.push('契约 ' + env.schema + ' · 模式 ' + env.mode + ' · 退出码 ' + env.exitCode + '（0 全过 / 1 有 WARN / 2 有 FAIL）');
+      if (env.mode === 'gate') {
+        L.push('相对基线' + (env.baselineAt ? '（' + String(env.baselineAt).replace('T', ' ').slice(0, 19) + ' · ' + env.baselineScore + ' 分）' : '')
+          + '：新增 FAIL ' + env.newFail + ' · 新增 WARN ' + env.newWarn + ' · 存量不计 ' + env.suppressed);
+        L.push(env.note);
+      } else {
+        L.push('绝对状态：PASS ' + by.PASS + ' · WARN ' + by.WARN + ' · FAIL ' + by.FAIL + '（共 ' + env.checks.length + ' 项）');
+      }
+      const bad = env.checks.filter((c) => c.status !== 'PASS' && (env.mode !== 'gate' || !c.suppressed));
       if (bad.length) {
         L.push('');
-        bad.forEach((c) => L.push('  [' + c.status + '] ' + c.id + ' ' + c.name));
+        bad.slice(0, 12).forEach((c) => L.push('  [' + c.status + '] ' + c.id + ' ' + c.name));
       }
-      return {
+      if (env.remediation && env.remediation.length) {
+        L.push('');
+        L.push('修法（有序）：');
+        env.remediation.slice(0, 8).forEach((s, i) => L.push('  ' + (i + 1) + '. ' + s));
+      }
+      const out = {
         ok: env.ok,
         contract: env.contract,
-        exit: env.doctor.exit,
+        schema: env.schema,
+        generatedAt: env.generatedAt,
+        profile: env.profile || '',
+        exit: env.exitCode,
+        exitCode: env.exitCode,
+        mode: env.mode,
         pass: by.PASS || 0,
-        warn: by.WARN || 0,
-        fail: by.FAIL || 0,
-        items: bad.map((c) => c.status + ' ' + c.id + ' ' + c.name),
+        warn: env.mode === 'gate' ? env.newWarn : (by.WARN || 0),
+        fail: env.mode === 'gate' ? env.newFail : (by.FAIL || 0),
+        newFail: env.newFail || 0,
+        newWarn: env.newWarn || 0,
+        suppressed: env.suppressed || 0,
+        fudged: env.fudged === true,
+        baselineAt: env.baselineAt || '',
+        baselineScore: typeof env.baselineScore === 'number' ? env.baselineScore : 0,
+        note: env.note || '',
+        items: env.checks.filter((c) => c.status !== 'PASS').map((c) => c.status + ' ' + c.id + ' ' + c.name),
         summary: L.join('\n'),
       };
+      if (env.remediation) out.remediation = env.remediation;
+      return out;
     },
   },
   {

@@ -1,5 +1,45 @@
 # CHANGELOG
 
+## 未发布 — 竞品分析反哺批
+
+> 依据 `docs/FIXLOG-COMPETITIVE-2026-11-17.md`。核心事实：竞品分析指出
+> 「`audit_check` 在一台自己判为 9.81 分的健康机器上仍然 exit=1」——一道永远红的门
+> 只有两种命运：被人 `|| true` 掉，或被人把发现一条条静音掉。
+
+### 修：CI 门从「绝对状态」改成「新问题门」（P1，借 SonarQube）
+
+- `audit_check` / `--check` 默认成为**基线门**：只判相对上一次快照的新增与回归，存量不阻塞；
+  新增 FAIL 永远 exit 2；新增 WARN 少于 3 条时不下判（fudge）；无基线时退回绝对门并写明原因。
+- 能力域行（`CAP-*`）标 `gating: false` 移出门禁——域冗余是「装得丰富」的结构事实，不是回归。
+- 新增 `--absolute`（老行为）与每条 check 的 `fresh` 标记；实测健康机器 `exit 1 → 0`。
+
+### 修：契约两处语义失真（P4，借 RFC #1846）
+
+- **UNKNOWN 不再落 PASS**：INFO+UNKNOWN → WARN（skip≠pass）。绝对门下 PASS 22→16、WARN 10→16。
+- 信封补 doctor 的顶层字段：`schema` / `generatedAt` / `profile` / `exitCode` / `summary{...}`，
+  保留 `contract` 与 `doctor.exit`（老读者不变）。
+- `remediation` 为 opt-in 有序修法数组（`--check --remediation`），不请求时字段完全不出现。
+
+### 改：建议带上物理量（P2，借 Lighthouse）
+
+- `plan.rows[].saves`：R17→`省 N MB`、R15→`少 N 个服务插件`、R16→`每轮省 token（待测 · 涉及 N 套）`，
+  其余为 `null`。**拿不到物理量就写待测，不许编数字。**
+
+### 改：验回仪式（P5，借 Snyk Fix Rate）
+
+- `audit_digest` 在采纳率为 0/算不出来时直接给出仪式提示（真修一条 → 重启 → 看采纳率）；
+  README 新增四步「验回仪式」。
+
+### 不做：注入采样（P3）
+
+- 宿主 `tokenMeter` 的 `measure/contextPressure` 都要 `Session` 实例，工具上下文拿不到句柄；
+  静态估算会把「估」当「测」，故不做。补偿：R16 的 fixHint 改成给出具体去处
+  （宿主 `tokenMeter.contextPressure` 或第三方 `dsh-context-budget`）。
+
+### 测试
+
+- 新增 `test/gate.mjs`（26 项断言）；`test/score.mjs` 增 4 条 saves 断言；`test/digest.mjs` 增 CLI 接线断言。
+
 ## 0.12.0 — 2026-11-17
 
 本版三批：**面板/趋势修复** · **架构审计反哺**（P0×2 / P1×7 / P2×5）· **产品审计反哺**（P0–P4）。

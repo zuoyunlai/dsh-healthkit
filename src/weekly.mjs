@@ -105,6 +105,18 @@ export function buildDigest(result, opts) {
     lines.push('');
     lines.push(feedback.text);
   }
+  // P5（借 Snyk Fix Rate）：采纳率现在恒为 0/null —— 把「怎么让它变成证据」写在旁边，
+  // 而不是让仪表上那个 0 一直挂着没人管。
+  let ritual = null;
+  try {
+    const m2 = productMetrics(home, { findingsCount: findings.length });
+    const ad = (m2 && m2.adoption) || {};
+    if (typeof ad.rate !== 'number' || ad.rate === 0) {
+      ritual = '验回仪式：采纳率现在是 ' + (typeof ad.rate === 'number' ? ad.rate + '%' : '算不出来')
+        + '。把上次说该修的那几条里**真修掉一条**，重启宿主让验回跑一次，这个数才会从 0 变成证据。';
+    }
+  } catch (e) { ritual = null; }
+
   if (metrics) {
     lines.push('');
     lines.push('运行数据：' + [
@@ -139,6 +151,10 @@ export function buildDigest(result, opts) {
     if (verify.stillThere.length) lines.push('- 还在：' + verify.stillThere.join('、'));
     if (verify.muted.length) lines.push('- 被静音：' + verify.muted.join('、'));
     if (verify.regressions.length) lines.push('- 回归：' + verify.regressions.join('、'));
+  }
+  if (ritual) {
+    lines.push('');
+    lines.push(ritual);
   }
   if (top.length) {
     lines.push('');

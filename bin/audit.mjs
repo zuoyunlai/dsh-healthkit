@@ -89,7 +89,9 @@ var USAGE = [
   '  dsh-healthkit --recommend         20 个能力域的推荐源（阶梯 + 去哪找，不联网不给包名）',
   '',
   'CI / 机器可读：',
-  '  dsh-healthkit --check            生态三值契约（PASS/WARN/FAIL + 退出码 0/1/2，同 dsh-plugin-doctor）',
+  '  dsh-healthkit --check            生态三值契约；默认基线门（只看相对上次快照的新增）',
+  '  dsh-healthkit --check --absolute 绝对状态门（老行为：存量问题也算）',
+  '  dsh-healthkit --check --remediation  附带有序修法清单',
   '  dsh-healthkit --format json      全量 JSON 报告（--out 指定落点）',
   '',
   '验回与时间线：',
@@ -241,18 +243,43 @@ if (has('check')) {
   try {
     var chkMod = await import('../src/report-json.mjs');
     var snapC = audit({ scenario: arg('scenario', 'general') });
-    var env = chkMod.buildCheckEnvelope(snapC, { version: snapC.self && snapC.self.version });
+    // P1：默认基线门（只看新增/回归）；--absolute 回退到老的绝对状态门。
+    var baseline = null;
+    if (!has('absolute')) {
+      try {
+        var snapModC = await import('../src/snapshot.mjs');
+        var prevC = snapModC.latestRun(home());
+        if (prevC) baseline = { at: prevC.at || null, score: typeof prevC.score === 'number' ? prevC.score : null, fps: (prevC.findings || []).map(function (f) { return f.fp; }).filter(Boolean) };
+      } catch (e) { baseline = null; }
+    }
+    var env = chkMod.buildGateEnvelope(snapC, { version: snapC.self && snapC.self.version, baseline: baseline, remediation: has('remediation') });
     if (has('json')) console.log(JSON.stringify(env, null, 2));
     else {
-      console.log('contract: ' + env.contract + '  exit=' + env.doctor.exit);
+      console.log('contract: ' + env.schema + '  mode=' + env.mode + '  exit=' + env.exitCode);
       var byStatus = { PASS: 0, WARN: 0, FAIL: 0 };
       env.checks.forEach(function (c) { byStatus[c.status] = (byStatus[c.status] || 0) + 1; });
-      console.log('PASS ' + byStatus.PASS + ' / WARN ' + byStatus.WARN + ' / FAIL ' + byStatus.FAIL + '（共 ' + env.checks.length + ' 项）');
-      env.checks.filter(function (c) { return c.status !== 'PASS'; }).forEach(function (c) {
-        console.log('  [' + c.status + '] ' + c.id + ' ' + c.name);
-      });
+      if (env.mode === 'gate') {
+        console.log('相对基线（' + String(env.baselineAt || '-').replace('T', ' ').slice(0, 19) + ' · ' + env.baselineScore + ' 分）：'
+          + '新增 FAIL ' + env.newFail + ' · 新增 WARN ' + env.newWarn + ' · 存量不计 ' + env.suppressed);
+        console.log(env.note);
+        // 只看「新增」的那几条：存量问题在 gate 模式下不阻塞，列表意义不大。
+        // 只列「新增且参与门禁」的：能力域是结构事实，标了 gating:false。
+        var fresh = env.checks.filter(function (c) { return c.fresh === true && c.gating !== false && c.status !== 'PASS'; });
+        var shown = fresh.length ? fresh : [];
+        shown.forEach(function (c) { console.log('  [' + c.status + '][新增] ' + c.id + ' ' + c.name); });
+      } else {
+        console.log('PASS ' + byStatus.PASS + ' / WARN ' + byStatus.WARN + ' / FAIL ' + byStatus.FAIL + '（共 ' + env.checks.length + ' 项）');
+        env.checks.filter(function (c) { return c.status !== 'PASS'; }).forEach(function (c) {
+          console.log('  [' + c.status + '] ' + c.id + ' ' + c.name);
+        });
+      }
+      if (env.remediation && env.remediation.length) {
+        console.log('');
+        console.log('修法（有序）：');
+        env.remediation.slice(0, 8).forEach(function (t, i) { console.log('  ' + (i + 1) + '. ' + t); });
+      }
     }
-    process.exit(env.doctor.exit);
+    process.exit(env.exitCode);
   } catch (e) { console.error('check failed: ' + e.message); process.exit(1); }
 }
 
