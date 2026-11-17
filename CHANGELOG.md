@@ -1,6 +1,20 @@
 # CHANGELOG
 
-## 未发布 — 面板语言修复批
+## 未发布 — 文档漂移修复批
+
+### 修：README 与 COMPLEMENTARY 落后于代码
+
+- README「现状」段还写着 **14 工具 / 18 组测试**，实际已是 **16 工具 / 30 组**；
+  连带 `apply()` 注入路径那行也从「14 工具」改成 16。
+- `docs/COMPLEMENTARY.md` 的「契约同形…同一套 CI 可以同时消费两者」只说了同形的一半：
+  竞品分析后我们补了 doctor 的顶层信封字段（`schema`/`generatedAt`/`profile`/`exitCode`），
+  但**行为是「和而不同」**——doctor 绝对门，我们默认基线门（存量不阻塞、新增 WARN < 3 不下判），
+  `UNKNOWN` 报 WARN 而不是 PASS，能力域行不参与门禁。原文已按这四点重写。
+- 守卫：新增 `test/docs-drift.mjs`（10 项断言）——README 工具表行数/标题中文数字/测试组数
+  必须等于实际值，禁止残留 `14 工具`、`18 组测试` 这类旧数字，COMPLEMENTARY 必须写清
+  `基线门` / `--absolute` / `UNKNOWN` 三处差异。
+
+
 
 ### 加：插件列表的本地化元数据（locale/*.json）
 
