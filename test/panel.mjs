@@ -26,9 +26,10 @@ const routes = {};
 const fakeWs = { register(r) { routes[r.path] = r; return () => {}; } };
 const rep = registerPanel(fakeWs);
 assert.equal(rep.ok, true, '面板应注册成功');
-assert.equal(rep.routes, 3);
+assert.equal(rep.routes, 4);
 assert.ok(routes['/dsh-healthkit-panel'], '页面路由缺');
 assert.ok(routes['/dsh-healthkit-panel/api/summary'], 'API 路由缺');
+assert.ok(routes['/dsh-healthkit-panel/api/badge'], 'B6 徽章路由缺');
 
 function fakeRes() {
   const out = { status: 0, headers: null, body: '' };

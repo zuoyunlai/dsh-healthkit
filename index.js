@@ -1204,6 +1204,131 @@ export function buildTools(deps) {
       };
     },
   },
+  // ---- 恢复面（A2）：这三条是「我坏了，现在就要救」那条链路的工具面 ----
+  {
+    name: 'audit_boot',
+    description: '预启动静态探针：判「这份配置还能不能被加载」——bundle 没装 / 没声明 dsh.bundle（宿主会静默跳过）/ cordis.patch.yml 解析不了 / 补丁 id 重复。不 spawn 宿主、不执行插件代码、不联网；判不了的（宿主版本兼容、插件运行时抛错、端口占用）会明确列出来。改完配置先跑它',
+    parameters: { type: 'object', properties: {}, additionalProperties: false },
+    output: {
+      schema: {
+        type: 'object',
+        properties: {
+          action: { type: 'string' },
+          canBoot: { type: 'boolean' },
+          blockers: { type: 'number' },
+          warnings: { type: 'number' },
+          profiles: { type: 'number' },
+          summary: { type: 'string' },
+        },
+        required: ['canBoot', 'summary'],
+      },
+      render(_args, v) { return text(v.summary); },
+    },
+    execute: async () => {
+      const { bootPreflight, renderBoot } = await import('./src/recovery.mjs');
+      const b = bootPreflight(dshHome());
+      return {
+        action: 'boot',
+        canBoot: b.canBoot === true,
+        blockers: b.blockers.length,
+        warnings: b.warnings.length,
+        profiles: b.profiles.length,
+        summary: renderBoot(b),
+      };
+    },
+  },
+  {
+    name: 'audit_checkpoint',
+    description: '把 profile 的配置文件存成一份快照——在配置还能用的时候建，出事时才有得回。只收白名单：package.json / cordis.patch.yml / cordis.patch.yaml / cordis.yml / pnpm-workspace.yaml / agent.cordis.yml；不含 node_modules，也不收 .npmrc 这类可能带凭据的文件。回滚前会自动再打一份',
+    parameters: {
+      type: 'object',
+      properties: {
+        reason: { type: 'string', description: '为什么建（写进清单，比如 before-upgrade）' },
+        keep: { type: 'number', description: '保留最近几份，缺省 10' },
+      },
+      additionalProperties: false,
+    },
+    output: {
+      schema: {
+        type: 'object',
+        properties: {
+          action: { type: 'string' },
+          id: { type: 'string' },
+          files: { type: 'number' },
+          profiles: { type: 'number' },
+          summary: { type: 'string' },
+        },
+        required: ['id', 'summary'],
+      },
+      render(_args, v) { return text(v.summary); },
+    },
+    execute: async (args) => {
+      const { checkpoint } = await import('./src/recovery.mjs');
+      const a = args || {};
+      const m = checkpoint(dshHome(), { reason: a.reason || 'tool', keep: typeof a.keep === 'number' ? a.keep : 10 });
+      return {
+        action: 'checkpoint',
+        id: m.id,
+        files: m.files.length,
+        profiles: m.profiles,
+        summary: '已建快照 ' + m.id + '：' + m.files.length + ' 个配置文件 / ' + m.profiles +
+          ' 个 profile（只有配置面，不含 node_modules）',
+      };
+    },
+  },
+  {
+    name: 'audit_rollback',
+    description: '把配置写回某份快照。危险动作，必须 confirm:true。写回前会自动给当前状态再打一份快照（回滚错了还能回来），只写清单里白名单内的文件，sha256 不符就跳过；回滚后请用 audit_boot 确认是否真的救回来了',
+    parameters: {
+      type: 'object',
+      properties: {
+        id: { type: 'string', description: '快照 id（audit_checkpoint 的返回，或 CLI --checkpoints 列出）' },
+        confirm: { type: 'boolean', description: '必须为 true 才真的写回' },
+      },
+      required: ['id'],
+      additionalProperties: false,
+    },
+    output: {
+      schema: {
+        type: 'object',
+        properties: {
+          action: { type: 'string' },
+          ok: { type: 'boolean' },
+          id: { type: 'string' },
+          written: { type: 'number' },
+          skipped: { type: 'number' },
+          backup: { type: 'string' },
+          summary: { type: 'string' },
+        },
+        required: ['ok', 'summary'],
+      },
+      render(_args, v) { return text(v.summary); },
+    },
+    execute: async (args) => {
+      const a = args || {};
+      if (a.confirm !== true) {
+        return {
+          action: 'rollback', ok: false, id: String(a.id || ''), written: 0, skipped: 0, backup: '',
+          summary: '没有写任何文件：这是会改配置的动作，需要显式 confirm:true。先看看要回滚到哪份：audit_checkpoint 的返回里有 id。',
+        };
+      }
+      const { rollback } = await import('./src/recovery.mjs');
+      const r = rollback(dshHome(), String(a.id || ''), {});
+      if (!r.ok) {
+        return {
+          action: 'rollback', ok: false, id: String(a.id || ''), written: 0, skipped: (r.skipped || []).length,
+          backup: '', summary: '回滚失败：' + (r.detail || r.reason) + ((r.skipped || []).length ? '\n跳过：\n  ' + r.skipped.join('\n  ') : ''),
+        };
+      }
+      return {
+        action: 'rollback', ok: true, id: r.id, written: r.written.length, skipped: r.skipped.length,
+        backup: r.backup,
+        summary: '已回滚到 ' + r.id + '（快照时间 ' + r.at + '）：写回 ' + r.written.length + ' 个文件' +
+          (r.written.length ? '\n  ' + r.written.join('\n  ') : '') +
+          '\n当前状态已存为 ' + r.backup + '（回滚错了还能回来）\n下一步：audit_boot 静态探针确认是否真救回来了',
+      };
+    },
+  },
   ];
 }
 

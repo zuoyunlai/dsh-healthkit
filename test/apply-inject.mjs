@@ -53,18 +53,18 @@ const statusPath = path.join(home, 'dsh-healthkit', 'plugin-status.json');
 assert.ok(fs.existsSync(statusPath), 'apply 应写出 plugin-status.json');
 const st = JSON.parse(fs.readFileSync(statusPath, 'utf8'));
 
-assert.equal(st.registered.length, 16, '16 个工具都应注册，实得 ' + st.registered.length + ': ' + st.registered.join(','));
-for (const n of ['audit_run', 'audit_report', 'audit_clean', 'audit_trend', 'audit_findings', 'audit_explain', 'audit_plan', 'audit_trim', 'audit_capabilities', 'audit_retire', 'audit_diff', 'audit_verify', 'audit_check', 'audit_recommend']) {
+assert.equal(st.registered.length, 19, '19 个工具都应注册，实得 ' + st.registered.length + ': ' + st.registered.join(','));
+for (const n of ['audit_run', 'audit_report', 'audit_clean', 'audit_trend', 'audit_findings', 'audit_explain', 'audit_plan', 'audit_trim', 'audit_capabilities', 'audit_retire', 'audit_diff', 'audit_verify', 'audit_check', 'audit_recommend', 'audit_boot', 'audit_checkpoint', 'audit_rollback']) {
   assert.ok(st.registered.includes(n), '缺工具 ' + n);
 }
 assert.deepEqual(st.failures, [], '不应有注册失败：' + JSON.stringify(st.failures));
 assert.equal(st.panel && st.panel.ok, true, '面板应挂上，实得 ' + JSON.stringify(st.panel));
-assert.equal(routes.length, 3, '应注册 3 条路由，实得 ' + routes.length);
+assert.equal(routes.length, 4, '应注册 4 条路由（面板 + /api/summary + /api/badge），实得 ' + routes.length);
 
 // ③ 宿主在服务重发布时会**重复触发 inject 回调**。若面板挂载的幂等旗不是同步立起来的，
 // 两次回调会各动态 import 一次、各挂一遍路由——真宿主上第二次全撞 duplicate
 // （2026-11-16 实测 status.panel.attempts 三条全 duplicate、routes=0）。
-// 这里让两个回调都触发，路由必须仍然只有 3 条。
+// 这里让两个回调都触发，路由必须仍然只有 4 条。
 const routes2 = [];
 const ws2 = { register(r) { routes2.push(r.path); return () => {}; } };
 const tools2 = { register() { return () => {}; } };
@@ -87,7 +87,7 @@ const doubleCtx = {
 
 apply(doubleCtx, {});
 await new Promise((r) => setTimeout(r, 800));
-assert.equal(routes2.length, 3, 'inject 回调重复触发时也只能挂 3 条路由，实得 ' + routes2.length + '：' + routes2.join(','));
+assert.equal(routes2.length, 4, 'inject 回调重复触发时也只能挂 4 条路由，实得 ' + routes2.length + '：' + routes2.join(','));
 
 fs.rmSync(home, { recursive: true, force: true });
-console.log('apply-inject: 通过（16 工具 · 面板 3 路由 · 重复回调不重复挂 · failures 空）');
+console.log('apply-inject: 通过（19 工具 · 面板 4 路由 · 重复回调不重复挂 · failures 空）');

@@ -28,9 +28,13 @@ assert.ok(byName.audit_clean, 'audit_clean 缺');
 assert.ok(byName.audit_trend, 'audit_trend 缺');
 assert.ok(byName.audit_digest, 'audit_digest 缺');
 assert.ok(byName.audit_feedback, 'audit_feedback 缺');
+// A2：恢复面三条（升级/改配置后「还能不能起来」的链路）
+assert.ok(byName.audit_boot, 'audit_boot 缺');
+assert.ok(byName.audit_checkpoint, 'audit_checkpoint 缺');
+assert.ok(byName.audit_rollback, 'audit_rollback 缺');
 
 // 每个工具都必须声明 output.schema 与 render（宿主硬要求）
-for (const n of ['audit_run', 'audit_report', 'audit_clean', 'audit_trend', 'audit_digest', 'audit_feedback', 'audit_findings', 'audit_explain', 'audit_plan', 'audit_trim', 'audit_capabilities', 'audit_retire', 'audit_diff', 'audit_verify', 'audit_check', 'audit_recommend']) {
+for (const n of ['audit_run', 'audit_report', 'audit_clean', 'audit_trend', 'audit_digest', 'audit_feedback', 'audit_findings', 'audit_explain', 'audit_plan', 'audit_trim', 'audit_capabilities', 'audit_retire', 'audit_diff', 'audit_verify', 'audit_check', 'audit_recommend', 'audit_boot', 'audit_checkpoint', 'audit_rollback']) {
   assert.ok(byName[n].output && byName[n].output.schema, n + ' 缺 output.schema');
   assert.equal(typeof byName[n].output.render, 'function', n + ' 缺 output.render');
 }

@@ -8,6 +8,7 @@ import { loadIndex, saveIndex, bundleIndexFrom } from '../src/probe.mjs';
 import { scan as cleanScan, apply as cleanApply, restore as cleanRestore, listBatches as cleanList, purge as cleanPurge, renderScan, fmtBytes } from '../src/clean.mjs';
 import { append as historyAppend, stats as historyStats, renderStats as renderHistory } from '../src/history.mjs';
 import { attributionLines } from '../src/report.mjs';
+import { checkpoint, listCheckpoints, bootPreflight, renderBoot, rollback, recover } from '../src/recovery.mjs';
 
 function arg(name, fallback) { var i = process.argv.indexOf('--' + name); return i > -1 ? process.argv[i + 1] : fallback; }
 function has(name) { return process.argv.indexOf('--' + name) > -1; }
@@ -77,6 +78,13 @@ var USAGE = [
   '  dsh-healthkit --clean-list',
   '  dsh-healthkit --clean-restore <批次号>',
   '  dsh-healthkit --clean-purge [--older-than N] [--dry-run]',
+  '',
+  '恢复面（配置快照 / 预启动探针 / 回滚）：',
+  '  dsh-healthkit --boot              预启动静态探针：这份配置还能不能被加载（exit 0 能 / 1 起不来）',
+  '  dsh-healthkit --checkpoint        把 profile 配置文件存成一份快照（配置还能用的时候建）',
+  '  dsh-healthkit --checkpoints       列出已有的快照',
+  '  dsh-healthkit --rollback <id> --yes   写回快照（写回前自动给当前状态再打一份）',
+  '  dsh-healthkit --recover [--yes]   探针不过时回滚到最新快照（不带 --yes 只看不动）',
   '',
   '解释与规划：',
   '  dsh-healthkit --findings [--severity P1] [--limit N]',
@@ -339,6 +347,68 @@ if (has('trend')) {
   if (has('json')) process.stdout.write(JSON.stringify(tstats, null, 2) + '\n');
   else console.log(renderHistory(tstats));
   process.exit(0);
+}
+
+// ---- 恢复面（A2）：配置快照 / 预启动探针 / 回滚 ----
+//
+// 与清理器的分工：清理器动的是**数据**（回收区、7 天可还原），这里动的是**配置**。
+// 所有写回动作都必须显式 --yes，并且写回前自动给当前状态再打一份快照。
+if (has('boot')) {
+  var bres = bootPreflight(home());
+  if (has('json')) console.log(JSON.stringify(bres, null, 2));
+  else console.log(renderBoot(bres));
+  process.exit(bres.canBoot ? 0 : 1);
+}
+if (has('checkpoint')) {
+  var cmd = checkpoint(home(), { reason: arg('reason', 'manual'), keep: Number(arg('keep', '10')) || 10 });
+  console.log('已建快照 ' + cmd.id + '：' + cmd.files.length + ' 个配置文件 / ' + cmd.profiles + ' 个 profile');
+  console.log('（只快照配置面：package.json、cordis.patch.yml、cordis.yml、pnpm-workspace.yaml、agent.cordis.yml；不含 node_modules）');
+  process.exit(0);
+}
+if (has('checkpoints')) {
+  var cps = listCheckpoints(home());
+  if (!cps.length) console.log('还没有快照：先跑 dsh-healthkit --checkpoint');
+  cps.forEach(function (c) {
+    console.log(c.id + '  ' + c.at + '  ' + c.files + ' 文件  ' + (c.reason || ''));
+  });
+  process.exit(0);
+}
+if (has('rollback')) {
+  var cpId = arg('rollback', '');
+  if (!has('yes')) {
+    console.error('--rollback 会写回配置文件，必须加 --yes（写回前会自动给当前状态再打一份快照）');
+    process.exit(2);
+  }
+  var rbres = rollback(home(), cpId, {});
+  if (!rbres.ok) { console.error('回滚失败: ' + (rbres.detail || rbres.reason)); process.exit(2); }
+  console.log('已回滚到 ' + rbres.id + '（快照时间 ' + rbres.at + '）：写回 ' + rbres.written.length + ' 个文件');
+  rbres.written.forEach(function (w) { console.log('  ' + w); });
+  if (rbres.skipped.length) { console.log('跳过 ' + rbres.skipped.length + ' 项：'); rbres.skipped.forEach(function (s) { console.log('  ' + s); }); }
+  console.log('当前状态已存为 ' + rbres.backup + '（回滚错了还能回来）');
+  console.log('下一步：' + rbres.next + '（静态探针确认是否真救回来了）');
+  process.exit(0);
+}
+if (has('recover')) {
+  var pre = bootPreflight(home());
+  if (!has('yes')) {
+    console.log(renderBoot(pre));
+    var candidates = listCheckpoints(home());
+    console.log('');
+    console.log(pre.canBoot
+      ? '静态看不用救。要强制回滚到最新快照：--recover --yes --force'
+      : (candidates.length
+        ? '可回滚到最新快照 ' + candidates[candidates.length - 1].id + '：--recover --yes'
+        : '没有可用快照：--checkpoint 先建一份（在配置还能用时建才有意义）'));
+    process.exit(pre.canBoot ? 0 : 1);
+  }
+  var rres2 = recover(home(), { preflight: pre, force: has('force') });
+  if (!rres2.acted) {
+    console.log('没动任何文件：' + (rres2.reason === 'already-bootable' ? '静态看能启动' : rres2.reason === 'no-checkpoint' ? '没有可用快照' : String(rres2.reason)));
+    process.exit(rres2.reason === 'already-bootable' ? 0 : 2);
+  }
+  console.log('已回滚到 ' + rres2.rolledBackTo + '（写回 ' + rres2.written.length + ' 个文件，当前状态存为 ' + rres2.backup + '）');
+  console.log(renderBoot(rres2.after));
+  process.exit(rres2.after.canBoot ? 0 : 1);
 }
 
 // ---- 清理器（P1）：全部先进回收区，7 天内可还原 ----
