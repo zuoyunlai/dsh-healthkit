@@ -20,6 +20,31 @@ import { readLastVerify, timeline as verifyTimeline } from './verify.mjs';
 
 const PREFIX = '/dsh-healthkit-panel';
 
+// B6「主动敲门」的便宜入口（2026-11-17 产品修订）：
+//
+// 竞品赢在「坏的那一刻用户能看见入口」，我们原来只有侧栏 tab——装完不打开就等于没装。
+// 但敲门不能用 collectSummary()，那会跑一次全量体检（几百毫秒 + 全盘扫），
+// 而客户端每次页面加载都会问一次。所以这里**只读账本最后一行**：不跑体检、不写状态，
+// 语义也诚实——它给的是「上次体检发现的 P0」，不是「现在有 P0」。
+export const BADGE_SCHEMA = 'dsh-healthkit/badge/v1';
+
+export function collectBadge() {
+  let last = null;
+  try {
+    const rows = loadHistory();
+    last = rows.length ? rows[rows.length - 1] : null;
+  } catch (e) { last = null; }
+  if (!last) return { schema: BADGE_SCHEMA, hasRun: false, p0: 0, p1: 0, score: null, at: null };
+  return {
+    schema: BADGE_SCHEMA,
+    hasRun: true,
+    p0: Number(last.p0 || 0),
+    p1: Number(last.p1 || 0),
+    score: typeof last.total === 'number' ? last.total : null,
+    at: last.at || null,
+  };
+}
+
 // B5：面板 payload 是唯一高频变更的面，却没有契约（report/check 都有 /v1）。
 // 这里给它一个版本串 + 必需键集；字段改名会立刻被面板测试挡住，而不是面板静默变空白。
 export const PANEL_SCHEMA = 'dsh-healthkit/panel/v1';
@@ -551,10 +576,16 @@ export function registerPanel(webServer) {
     try { sendJson(res, 200, collectSummary()); }
     catch (e) { sendJson(res, 500, { error: String((e && e.message) || e) }); }
   };
+  const badge = function handler(req, res) {
+    if (!loopbackOnly(req)) return sendJson(res, 403, { error: 'loopback only' });
+    try { sendJson(res, 200, collectBadge()); }
+    catch (e) { sendJson(res, 500, { error: String((e && e.message) || e) }); }
+  };
   const routes = [
     { kind: 'exact', path: PREFIX, handler: page },
     { kind: 'exact', path: PREFIX + '/', handler: page },
     { kind: 'exact', path: PREFIX + '/api/summary', handler: api },
+    { kind: 'exact', path: PREFIX + '/api/badge', handler: badge },
   ];
   for (const r of routes) {
     try { webServer.register(r); report.routes += 1; report.attempts.push({ path: r.path, ok: true }); }

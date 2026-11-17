@@ -48,6 +48,8 @@ window.__ModuleLoader__.load({
         timelineTitle: '最近几次的变化',
         timelineHint: '至少跑两次体检才有可比的变化（第一次是基线）。',
         timelineRow: '新增 {a} / 真修好 {b} / 被静音 {c}',
+        p0Tip: '上次体检发现 {n} 个 P0（点开面板先解这些封顶项）',
+        p0Chip: 'P0 {n}',
       },
       en: {
         title: 'Checkup', refresh: 'Refresh', loading: 'Loading…', retry: 'Retry', error: 'Panel error: ',
@@ -69,6 +71,8 @@ window.__ModuleLoader__.load({
         timelineTitle: 'Recent changes',
         timelineHint: 'Needs at least two runs to compare (the first is the baseline).',
         timelineRow: '+{a} / fixed {b} / muted {c}',
+        p0Tip: 'Last checkup found {n} P0 — open the panel to clear the score cap first',
+        p0Chip: 'P0 {n}',
         stable: 'Steady at {a}–{b} over {n} runs',
         infoGroup: '{n} more INFO findings (not scored)',
         scored: '{a} scored / {b} total',
@@ -90,6 +94,44 @@ window.__ModuleLoader__.load({
       ok: '#16a34a', warn: '#d97706', bad: '#dc2626', info: '#6b7280',
     };
     const SEV_COLOR = { P0: C.bad, P1: C.warn, P2: C.accent, INFO: C.info };
+
+    // B6「主动敲门」（2026-11-17 产品修订）：
+    //
+    // 竞品赢在「坏的那一刻用户能看见入口」，我们原来只有右侧栏 tab——装完不打开就等于没装。
+    // 但敲门不能用 /api/summary：那会跑一次全量体检（几百毫秒 + 全盘扫），而客户端每次页面
+    // 加载都会问一次。所以走便宜入口 /api/badge：Host 只读账本最后一行，不跑体检、不写状态。
+    // 语义也诚实——它说的是「上次体检发现的 P0」，不是「现在有 P0」。
+    //
+    // 一次加载只问一次：结论存在模块级 shared 里，标签与面板订阅同一份，不重复请求。
+    const BADGE_API = '/dsh-healthkit-panel/api/badge';
+    const shared = { badge: null, asked: false, subs: new Set() };
+    function publishBadge(b) {
+      shared.badge = b;
+      shared.subs.forEach(function (fn) { try { fn(b); } catch (e) { /* ignore */ } });
+    }
+    function askBadge() {
+      if (shared.asked) return;
+      shared.asked = true;
+      try {
+        fetch(BADGE_API, { credentials: 'same-origin' })
+          .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+          .then(function (b) { publishBadge(b); })
+          .catch(function () { publishBadge({ hasRun: false, p0: 0 }); });
+      } catch (e) { publishBadge({ hasRun: false, p0: 0 }); }
+    }
+    function useAlertP0() {
+      const [p0, setP0] = useState(function () {
+        return shared.badge && typeof shared.badge.p0 === 'number' ? shared.badge.p0 : 0;
+      });
+      useEffect(function () {
+        askBadge();
+        const fn = function (b) { setP0(b && typeof b.p0 === 'number' ? b.p0 : 0); };
+        shared.subs.add(fn);
+        if (shared.badge) fn(shared.badge);
+        return function () { shared.subs.delete(fn); };
+      }, []);
+      return p0;
+    }
 
     // 语言检测：只认宿主 locale 服务的真实契约。
     //
@@ -147,7 +189,7 @@ window.__ModuleLoader__.load({
 
     function HealthkitIcon(props) {
       const s = props && typeof props.size === 'number' ? props.size : 16;
-      return h('svg', {
+      const svg = h('svg', {
         width: s, height: s, viewBox: LOGO_VIEWBOX,
         className: props && props.className,
         style: { display: 'block', flex: 'none' },
@@ -156,6 +198,21 @@ window.__ModuleLoader__.load({
         h('rect', { width: 658.9, height: 658.9, rx: 65.98, ry: 65.98, fill: '#6EAB3B' }),
         h('path', { fill: '#FEFEFE', fillRule: 'nonzero', d: LOGO_PATH }),
       );
+      // 红点是 props 驱动的，**刻意不在图标里用 hooks**：这个组件会被宿主用
+      // `guide: [{ icon: HealthkitIcon }]` 拿去渲染，若宿主直接调用（而非 createElement），
+      // 组件内的 hooks 会炸成 "invalid hook call"。状态一律由父组件（TitleSpan）传进来。
+      if (!(props && props.alert)) return svg;
+      return h('span', {
+        style: { position: 'relative', display: 'inline-flex', flex: 'none' },
+        title: props.title || '',
+      },
+        svg,
+        h('span', {
+          style: {
+            position: 'absolute', top: -2, right: -2, width: 7, height: 7, borderRadius: '50%',
+            background: C.bad, boxShadow: '0 0 0 1.5px var(--dsw-alias-bg-layer-1, #ffffff)',
+          },
+        }, null));
     }
 
     // 数值兜底：服务端算出 NaN/undefined 时不要让面板印出 "NaN"（0.8.6 实测踩过：
@@ -441,7 +498,12 @@ window.__ModuleLoader__.load({
         const signal = currentAbort ? currentAbort.signal : undefined;
         fetch(API, { cache: 'no-store', signal })
           .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
-          .then(function (d) { setState({ loading: false, data: d, error: null }); })
+          .then(function (d) {
+            setState({ loading: false, data: d, error: null });
+            // 面板拿到全量数据时顺手校准 chip：即使宿主上还没有 /api/badge 路由（旧版 Host），
+            // 打开过一次面板之后标签上的 P0 也会显示正确。
+            if (d && typeof d.p0 === 'number') publishBadge({ hasRun: true, p0: d.p0 });
+          })
           // 一次 60 秒缓存窗口里的瞬时失败，不该把「有内容的只读面板」整屏换成错误页：
           // 留着旧数据，把错误挂成顶部一条。
           .catch(function (e) {
@@ -899,8 +961,20 @@ window.__ModuleLoader__.load({
 
     function TitleSpan(props) {
       const lang = props.lang || I18N.zh;
+      // B6：标签上带 P0 chip —— 面板没打开也能看见「上次体检有封顶项」。
+      const p0 = useAlertP0();
       return h('span', { style: { display: 'inline-flex', alignItems: 'center', gap: 6 } },
-        h(HealthkitIcon, { size: 16 }), h('span', { style: { fontSize: 12 } }, lang.title));
+        h(HealthkitIcon, { size: 16, alert: p0 > 0, title: String(lang.p0Tip).replace('{n}', String(p0)) }),
+        h('span', { style: { fontSize: 12 } }, lang.title),
+        p0 > 0
+          ? h('span', {
+            title: String(lang.p0Tip).replace('{n}', String(p0)),
+            style: {
+              fontSize: 10, fontWeight: 700, lineHeight: '14px', padding: '0 4px', borderRadius: 7,
+              color: '#fff', background: C.bad, fontVariantNumeric: 'tabular-nums', flex: 'none',
+            },
+          }, String(lang.p0Chip).replace('{n}', String(p0)))
+          : null);
     }
 
     return {
