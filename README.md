@@ -53,8 +53,41 @@ DSH 是插件化的，升级或改配置之后最常见的坏法不是报错，�
 它不 spawn 宿主、不执行插件代码、不联网。判不了的三件事（宿主版本兼容、插件运行时抛错、
 端口占用）探针会明说是它判不了，而不是假装通过。
 
-### 两种用法：看状态，还是当 CI 门
+### 顺手把「这个插件能碰什么」也吐出来
 
+`dsh-healthkit --disclose` 给每个已装第三方插件一份**静态能力披露**，刻意用插件目录
+（`dsh-plugin-catalog`，11,519 条）那套 **10 个 token 的闭集**，可以直接喂给目录/市场：
+
+```json
+{ "name": "@dshworks/dsh-solidworks", "capabilities": ["fs-read","fs-write","env","shell"],
+  "capabilityRedLines": ["spawns processes AND has network access"], "capabilityCheckedAt": "…" }
+```
+
+判据全是文本信号，**不执行插件代码**；注释里的示例不算能力，同源相对 `fetch('/api/x')`
+不算联网（否则本仓自己在 client.js 里就用了 fetch，等于对自己的承诺撒谎）。
+扫到上限会明写 `capped: true`，读不到的文件列在 `unchecked`——**没列出来不等于没有**。
+
+### 作者侧：发布前先自检
+
+```bash
+dsh-healthkit --preflight ./my-plugin      # exit 0 可发 / 1 有警告 / 2 先别发
+```
+
+拦的都是**发出去就改不了**的事：没有 `dsh.bundle`（宿主静默跳过）、`main` / `dsh.bundle.patch`
+指向不存在的文件、没写 `files`（会把 `.npmrc` 之类一起发出去）、补丁里没有 `id`。
+风格问题（缺 description / license / engines、版本还是 `0.0.x`）只降级为警告，
+不然新仓永远发不出去。不需要装 DSH，纯静态。
+
+### 规则矩阵（生成物，不手写）
+
+[`docs/MATRIX.md`](docs/MATRIX.md) 是 `dsh-healthkit --matrix --out docs/MATRIX.md`
+从 `src/rules.mjs` 抽出来的：每条规则 × 体检 / 探针 / 清理 / 门禁四列。
+改了规则不重生成，`test/matrix.mjs` 会红。
+
+> 我们**不做**「全目录插件 × 宿主版本」的兼容矩阵：那要求逐个装插件、逐个启动宿主，
+> 做不到还硬做就是编数据。这张表只描述自己代码里真实存在的规则。
+
+### 两种用法：看状态，还是当 CI 门
 - `audit_check`（或 `--check`）默认是**基线门**：只判「相对上一次快照的新增与回归」，
   存量问题不阻塞；新增少于 3 条 WARN 时不下判（照 SonarQube 的 fudge 口径），新增 FAIL 永不放过。
   想按绝对状态判，用 `--absolute`。
@@ -177,7 +210,7 @@ P0 会封顶总分（≥1 条封 5.0，≥3 条封 4.0）——所以分数涨�
 
 ## 现状
 
-R1–R24 全跑；34 组测试全绿（Windows、WSL、CI 的 node 20/22 四份环境）：夹具回归、不变量、
+R1–R24 全跑；37 组测试全绿（Windows、WSL、CI 的 node 20/22 四份环境）：夹具回归、不变量、
 报告落点 8/8、版本号守卫、数据目录迁移守卫 4/4、工具形状（16 个）、面板路由与回环守卫、
 `apply()` 注入路径（假 ctx 跑出 16 工具 + 3 路由 + 重复回调不重复挂）、能力域矩阵、误报退役区、
 降级 9 场景、快照差分、可移植性、本地依赖 P0、跨重启验回、JSON 报告三值契约、能力域推荐源、

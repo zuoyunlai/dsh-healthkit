@@ -2,6 +2,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { audit, loadRetirements, saveRetirements } from '../src/engine.mjs';
 import { loadIndex, saveIndex, bundleIndexFrom } from '../src/probe.mjs';
@@ -9,11 +10,15 @@ import { scan as cleanScan, apply as cleanApply, restore as cleanRestore, listBa
 import { append as historyAppend, stats as historyStats, renderStats as renderHistory } from '../src/history.mjs';
 import { attributionLines } from '../src/report.mjs';
 import { checkpoint, listCheckpoints, bootPreflight, renderBoot, rollback, recover } from '../src/recovery.mjs';
+import { disclose, renderDisclosure } from '../src/disclose.mjs';
+import { preflightRepo, renderPreflight } from '../src/preflight.mjs';
+import { buildMatrix, renderMatrix } from '../src/matrix.mjs';
 
-function arg(name, fallback) { var i = process.argv.indexOf('--' + name); return i > -1 ? process.argv[i + 1] : fallback; }
-function has(name) { return process.argv.indexOf('--' + name) > -1; }
+function arg(name, fallback) { var i = process.argv.indexOf('--' + name); return i > -1 ? process.argv[i + 1] : fallback; }function has(name) { return process.argv.indexOf('--' + name) > -1; }
 function localDate() { return new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10); }
 function home() { return process.env.DSH_HOME || path.join(os.homedir(), '.dsh'); }
+// 仓库根（--matrix 要从自己的源码抽规则表，不能指望调用者的 cwd 是仓库）
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 function uniqueBundles(h) {
   var set = {}; var dirs = [];
@@ -79,12 +84,18 @@ var USAGE = [
   '  dsh-healthkit --clean-restore <批次号>',
   '  dsh-healthkit --clean-purge [--older-than N] [--dry-run]',
   '',
-  '恢复面（配置快照 / 预启动探针 / 回滚）：',
-  '  dsh-healthkit --boot              预启动静态探针：这份配置还能不能被加载（exit 0 能 / 1 起不来）',
+  '恢复面（配置快照 / 预启动探针 / 回滚）：',  '  dsh-healthkit --boot              预启动静态探针：这份配置还能不能被加载（exit 0 能 / 1 起不来）',
   '  dsh-healthkit --checkpoint        把 profile 配置文件存成一份快照（配置还能用的时候建）',
   '  dsh-healthkit --checkpoints       列出已有的快照',
   '  dsh-healthkit --rollback <id> --yes   写回快照（写回前自动给当前状态再打一份）',
   '  dsh-healthkit --recover [--yes]   探针不过时回滚到最新快照（不带 --yes 只看不动）',
+  '',
+  '能力披露（与插件目录的 capabilities / capabilityRedLines 同一套词汇）：',
+  '  dsh-healthkit --disclose [--out 路径]   每个第三方已装插件的静态能力披露 JSON',
+  '',
+  '作者侧（发布前自检，不需要装 DSH）：',
+  '  dsh-healthkit --preflight <插件仓> [--json]   exit 0 可发 / 1 有警告 / 2 先别发',
+  '  dsh-healthkit --matrix [--out docs/MATRIX.md] 规则矩阵（24 条规则 × 体检/探针/清理/门禁）',
   '',
   '解释与规划：',
   '  dsh-healthkit --findings [--severity P1] [--limit N]',
@@ -346,6 +357,43 @@ if (has('trend')) {
   var tstats = historyStats({ days: trendDays });
   if (has('json')) process.stdout.write(JSON.stringify(tstats, null, 2) + '\n');
   else console.log(renderHistory(tstats));
+  process.exit(0);
+}
+
+// ---- 规则矩阵（C2）：真源是 src/rules.mjs，生成 docs/MATRIX.md 防漂移 ----
+if (has('matrix')) {
+  var mtx = buildMatrix(ROOT);
+  var mout = arg('out', '');
+  if (has('json')) console.log(JSON.stringify(mtx, null, 2));
+  if (mout) {
+    fs.mkdirSync(path.dirname(path.resolve(mout)), { recursive: true });
+    fs.writeFileSync(path.resolve(mout), renderMatrix(mtx) + '\n', 'utf8');
+    console.log('已写出规则矩阵（' + mtx.count + ' 条）→ ' + path.resolve(mout));
+  }
+  if (!has('json') && !mout) console.log(renderMatrix(mtx));
+  process.exit(0);
+}
+
+// ---- 作者侧发布前自检（C1）：exit 0 PASS / 1 WARN / 2 FAIL（与 audit_check 同口径）----
+if (has('preflight')) {
+  var target = arg('preflight', '.');
+  var pfr = preflightRepo(target || '.');
+  if (has('json')) console.log(JSON.stringify(pfr, null, 2));
+  else console.log(renderPreflight(pfr));
+  process.exit(pfr.verdict === 'PASS' ? 0 : pfr.verdict === 'WARN' ? 1 : 2);
+}
+
+// ---- 能力披露（A4）：与插件目录的 capabilities / capabilityRedLines 字段同一套词汇 ----
+if (has('disclose')) {
+  var dsc = disclose(home());
+  var dout = arg('out', '');
+  if (dout) {
+    fs.mkdirSync(path.dirname(path.resolve(dout)), { recursive: true });
+    fs.writeFileSync(path.resolve(dout), JSON.stringify(dsc, null, 2) + '\n', 'utf8');
+    console.log('已写出 ' + dsc.count + ' 个插件的披露 → ' + path.resolve(dout));
+  }
+  if (has('json')) console.log(JSON.stringify(dsc, null, 2));
+  else if (!dout) console.log(renderDisclosure(dsc));
   process.exit(0);
 }
 

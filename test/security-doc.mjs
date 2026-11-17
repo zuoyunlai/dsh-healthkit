@@ -47,10 +47,19 @@ for (const a of artifacts) {
 }
 
 // ③ 「不联网」是硬承诺：src/ 与 bin/ 不许出现 HTTP 客户端或 fetch
-for (const bad of ['node:http', 'node:https', 'require(\'http\')', 'fetch(']) {
-  // panel.mjs 只接收宿主注入的 req/res，不 import 任何网络模块；这里连 fetch( 一起禁，保持口径简单
-  ok('代码里不许出现网络客户端：' + bad, !code.includes(bad));
+//
+// 豁免 `src/disclose.mjs`：它本身就是静态扫描器的**规则表**，表里必然写着
+// `node:http`、`fetch(` 这些模式字面量。规则表不是行为代码——不改豁免，
+// 这条断言会变成「任何给别的东西做能力扫描的工具都不许存在」。
+const { SELF_RULE_BASENAMES } = await import('../src/disclose.mjs');
+const netScope = codeFiles
+  .filter((f) => SELF_RULE_BASENAMES.indexOf(path.basename(f)) === -1)
+  .map((f) => fs.readFileSync(f, 'utf8'))
+  .join('\n');
+for (const bad of ['from \'node:http\'', 'from "node:http"', 'from \'node:https\'', 'from "node:https"', 'require(\'http\')', 'require("http")', 'fetch(']) {
+  ok('代码里不许出现网络客户端：' + bad, !netScope.includes(bad));
 }
+ok('豁免清单不是空壳（disclose.mjs 确实在库里）', SELF_RULE_BASENAMES.every((b) => codeFiles.some((f) => path.basename(f) === b)));
 
 // ④ 面板回环校验必须真的返回 403
 const panel = fs.readFileSync(path.join(root, 'src', 'panel.mjs'), 'utf8');

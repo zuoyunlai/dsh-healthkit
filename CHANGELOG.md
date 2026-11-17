@@ -1,5 +1,36 @@
 # CHANGELOG
 
+## 未发版（2026-11-17 · 竞品检索反哺批）
+
+依据 `docs/COMPETITIVE-RETRIEVAL-2026-11-17.md`（一次带数据的竞品检索：我们自己的 npm 下载量
+是**首发当天的一次性扇出**，不是用户；同域头部 `dsh-plugin-health` 5,623/周卖的是「升级后插件坏了」）。
+19 个工具，测试 37 组。
+
+- **A1 改定位**：README / package.json description / locale meta 从「只读体检」改成
+  「升完级、改完配置，先问一句插件还在跑吗」——把已经存在的能力（`R23` 静默跳过、`R1`/`R2`/`R14b`、
+  跨重启验回）提到首句，而不是新造功能。
+- **A2 恢复面（新）**：`src/recovery.mjs` + 5 个 CLI 开关（`--boot` / `--checkpoint` / `--checkpoints` /
+  `--rollback` / `--recover`）+ 3 个工具（`audit_boot` / `audit_checkpoint` / `audit_rollback`）。
+  预启动静态探针判 bundle 缺失、`dsh.bundle` 未声明、patch 解析失败、补丁 id 重复；
+  回滚写回前**自动给当前状态再打一份快照**，只写白名单文件，sha256 不符就跳过。
+  第一版把宿主自带的 `@deepseek-ai/*` 全报成「依赖没装」（桌面 43 条假红），当场修掉。
+- **A3 分发**：核实 5 条收录 PR 全部 `mergeable=true`（主榜 #16020 双绿 + CLEAN）、
+  仓库 description 与 topics 跟新定位对齐（补 `health-check` / `diagnostics`）。
+- **A4 能力披露（新）**：`src/disclose.mjs`，用插件目录那套 **10 token 闭集**
+  （`fs-read`/`fs-write`/`env`/`network`/`shell`/`credentials`/`llm`/`dynamic-code`/`host-runtime`/`subagent`）
+  产出 `capabilities` / `capabilityRedLines`，可直接被目录消费。同源相对 `fetch('/api/…')`
+  不算联网，注释里的示例不算能力——否则本仓自己的自披露会打自己的脸。
+- **B5 安全边界**：新增 `SECURITY.md`（读什么/写什么/清理护栏/面板回环/明确做不到的事），
+  `test/security-doc.mjs` 把文案与代码动作面做机器对账。
+- **B6 主动敲门**：新增便宜入口 `/api/badge`（只读账本最后一行，**不跑体检**）+ 侧栏标签 P0 chip。
+  装完不打开面板也能看见「上次体检有几条 P0」。
+- **B7 诚实标注**：README 继续用真实输出片段，不拿 npm 下载数当卖点。
+- **C1 作者侧（新）**：`--preflight <插件仓>`，拦住发出去就改不了的事（无 `dsh.bundle`、`main` 指向
+  不存在的文件、没写 `files`、清单含 `.npmrc`、补丁没有 `id`），风格问题只降级为警告。
+- **C2 规则矩阵（生成物）**：`--matrix --out docs/MATRIX.md` 从 `src/rules.mjs` 抽 36 条规则 ×
+  体检/探针/清理/门禁；`test/matrix.mjs` 重生成比对，表不可能比代码旧。**不做**「全目录 × 宿主版本」
+  的兼容矩阵（要求逐个装插件启动宿主，做不到就不编）。
+
 ## 0.12.1 — 2026-11-17
 
 本版四个批次：**代码审查反哺**（安全 P1×1 / 正确性 P1×1 / 性能 P1×1 / P2×4 / P3×3）· **文档漂移修复** · **面板语言修复 + 插件列表 locale 元数据** · **竞品分析反哺**（基线门 / 契约 skip≠pass / 物理量 / 验回仪式）。
