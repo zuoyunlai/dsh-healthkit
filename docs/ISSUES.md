@@ -29,8 +29,8 @@
   「插件重复安装」，去查一个不存在的问题。工具面不受影响。
 - **修法**：面板改用一个**同步**的 `panelMounting` 旗（回调第一行即置上，失败时放开以便重试）；
   `registerAll` 以「本轮已注册过」为幂等条件。见 CHANGELOG 0.11.1。
-- **回归**：`test/apply-inject.mjs` 让 inject 回调触发两次，断言路由仍只有 3 条
-  （未修前实测 6 条）。
+- **回归**：`test/apply-inject.mjs` 让 inject 回调触发两次，断言路由不重复（0.13.0 起路由为 4 条：面板 + summary + badge + 目录页；
+  未修前实测会翻倍）。
 - **教训**：`inject` 回调的幂等旗必须在**同步段**立起来。任何「等 await / 动态 import 之后再判断」
   的守卫都挡不住重入——这和「乐观锁要写在临界区入口」是同一类错误。
 
@@ -43,3 +43,8 @@
 - **判据**：以 CI 日志里的 `+ pkg@version` 与 `shasum` 为准；`npm view` / registry 404 只是传播延迟。
 - **顺带**：`setup-node` 会注入占位 `NODE_AUTH_TOKEN`（日志里 `XXXXX-...`），
   这不代表用了 token 认证——看 npm 元数据的 `_npmUser.trustedPublisher` 才准。
+- **第二次复现（2026-11-18，0.13.0）**：同样的传播延迟，`npm view dsh-healthkit@0.13.0`
+  连续 **7 次 E404**、间隔 45s（≈5 分钟）后才返回元数据。这一次没有在 404 期间做任何动作，
+  结论成立：**发布成功后 registry 404 是常态，不是失败**。四锁核验一次通过
+  （本地 pack sha1 `19dce00a…` == `dist.shasum`、`gitHead` == tag 提交、SLSA provenance 有、
+  `_npmUser` = GitHub Actions OIDC）。
