@@ -23,13 +23,34 @@ import { fileURLToPath } from 'node:url';
 const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.join(here, '..');
 
-// react 从真机 profile 拿；拿不到就跳过（CI 上没装宿主依赖）
+// react 优先用真机 profile 里的；拿不到就用**桩**，绝不允许跳过。
+//
+// 教训（0.13.1 审计 P1-3）：最初这里「找不到 react 就 process.exit(0) 并打印跳过」，
+// 而查找路径写死了作者本机的 `C:/Users/<me>/.dsh/...`，CI 上必然走跳过分支——
+// 于是**专门防「右栏被清空」的守卫，恰恰在 CI 上从来没跑过**。
+// 本仓在 CI 门禁上坚持 skip ≠ pass，自己的测试不能例外。
 let React = null;
-for (const base of [
-  'C:/Users/Zuoyunlai/.dsh/profiles/desktop/node_modules/',
-  path.join(root, 'node_modules') + '/',
-]) {
-  try { React = createRequire(base)('react'); break; } catch (e) { /* 下一处 */ }
+let reactSource = 'real';
+const forceStub = process.env.DSH_HEALTHKIT_STUB_REACT === '1';
+if (!forceStub) {
+  for (const base of [
+    path.join(root, 'node_modules') + '/',
+    'C:/Users/Zuoyunlai/.dsh/profiles/desktop/node_modules/',
+  ]) {
+    try { React = createRequire(base)('react'); break; } catch (e) { /* 下一处 */ }
+  }
+}
+if (!React) {
+  reactSource = 'stub';
+  React = {
+    createElement(type, props) { return { type, props, children: Array.prototype.slice.call(arguments, 2) }; },
+    useState(init) { return [typeof init === 'function' ? init() : init, function () {}]; },
+    useEffect() {},
+    useCallback(fn) { return fn; },
+    useMemo(fn) { return fn(); },
+    useRef() { return { current: null }; },
+    Fragment: 'Fragment',
+  };
 }
 
 let n = 0;
@@ -61,8 +82,7 @@ ok('def.id 与 package.json 的 name 一致（模块身份按包名对账）', d
 ok('package.json 导出了 ./client（宿主按它取 bundle）', !!(pkg.exports && pkg.exports['./client']));
 
 if (!React) {
-  console.log('client-apply: 跳过（本机没有 react，无法物化 factory）');
-  process.exit(0);
+  throw new Error('内部错误：react 与桩都没就位');
 }
 
 // ② 物化 factory：只允许 require('react')，其他一律抛（会暴露多余的 external）
@@ -154,4 +174,6 @@ const applyStart = src.indexOf('apply(ctx) {');
 const applyBody = src.slice(applyStart, applyStart + 3000).replace(/\/\/[^\n]*/g, '');
 ok('apply() 作用域里不许出现裸 lang.', !/return\s+lang\./.test(applyBody), applyBody.match(/return\s+lang\.[^\n]*/) + '');
 
-console.log('client-apply: 通过（' + n + ' 项断言 · 宿主调用面 title/guide/icon 全不抛）');
+ok('断言全部真的跑过（不许靠跳过凑绿）', n >= 20, String(n));
+ok('记录 react 来源（real/stub 都要能跑）', reactSource === 'real' || reactSource === 'stub', reactSource);
+console.log('client-apply: 通过（' + n + ' 项断言 · 宿主调用面 title/guide/icon 全不抛 · react=' + reactSource + '）');

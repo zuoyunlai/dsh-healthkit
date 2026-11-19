@@ -7,6 +7,8 @@
 // 而是换表达：**1 句结论 → ≤3 条最值得动的 → 其余一句话收走**。
 //
 // 这个模块是这条口径的单一真源：CLI 首屏、audit_run 的 summary、面板的 headline 都读它。
+import { renderDegradations } from './degrade.mjs';
+
 const SEV_ORDER = { P0: 0, P1: 1, P2: 2, INFO: 3 };
 
 // 一句话结论：面板与 CLI 共用，避免两处措辞漂移。
@@ -73,5 +75,11 @@ export function renderFirstScreen(result, opts) {
     lines.push('');
     lines.push('其余 ' + tail.join(' / ') + '：`audit_findings` 或 `--findings` 看全量。');
   }
-  return { headline: headline, topActions: top, infoCount: infoCount, restScoring: restScoring, lines: lines };
+  // P2-4：采集降级要出现在结论里——「判不了」不能长得像「没问题」。
+  const degraded = (result && result.degradations) || [];
+  if (degraded.length) {
+    lines.push('');
+    lines.push(renderDegradations(degraded));
+  }
+  return { headline: headline, topActions: top, infoCount: infoCount, restScoring: restScoring, degradations: degraded, lines: lines };
 }

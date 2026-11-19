@@ -84,17 +84,17 @@ var USAGE = [
   '  dsh-healthkit --clean-restore <批次号>',
   '  dsh-healthkit --clean-purge [--older-than N] [--dry-run]',
   '',
-  '恢复面（配置快照 / 预启动探针 / 回滚）：',  '  dsh-healthkit --boot              预启动静态探针：这份配置还能不能被加载（exit 0 能 / 1 起不来）',
+  '恢复面（配置快照 / 预启动探针 / 回滚）：',  '  dsh-healthkit --boot [--host V]   预启动静态探针：这份配置还能不能被加载（exit 0 能 / 1 起不来）',
   '  dsh-healthkit --checkpoint        把 profile 配置文件存成一份快照（配置还能用的时候建）',
   '  dsh-healthkit --checkpoints       列出已有的快照',
   '  dsh-healthkit --rollback <id> --yes   写回快照（写回前自动给当前状态再打一份）',
   '  dsh-healthkit --recover [--yes]   探针不过时回滚到最新快照（不带 --yes 只看不动）',
   '',
   '能力披露（与插件目录的 capabilities / capabilityRedLines 同一套词汇）：',
-  '  dsh-healthkit --disclose [--out 路径]   每个第三方已装插件的静态能力披露 JSON',
+  '  dsh-healthkit --disclose [--out 路径]   每个第三方已装插件的静态能力披露 JSON（带 confirmed/heuristic）',
   '',
   '作者侧（发布前自检，不需要装 DSH）：',
-  '  dsh-healthkit --preflight <插件仓> [--json]   exit 0 可发 / 1 有警告 / 2 先别发',
+  '  dsh-healthkit --preflight <插件仓> [--host V] [--json]   exit 0 可发 / 1 有警告 / 2 先别发',
   '  dsh-healthkit --matrix [--out docs/MATRIX.md] 规则矩阵（规则 × 体检/探针/清理/门禁，真源 src/rules.mjs）',
   '',
   '解释与规划：',
@@ -356,7 +356,13 @@ if (has('trend')) {
   if (!Number.isFinite(trendDays) || trendDays <= 0) trendDays = 30;
   var tstats = historyStats({ days: trendDays });
   if (has('json')) process.stdout.write(JSON.stringify(tstats, null, 2) + '\n');
-  else console.log(renderHistory(tstats));
+  else {
+    console.log(renderHistory(tstats));
+    // P2-4：读账本时若降级（坏行/读不出），趋势会看起来像「体检次数少了」，必须说出来
+    var dgMod = await import('../src/degrade.mjs');
+    var dgLine = dgMod.renderDegradations(dgMod.drain());
+    if (dgLine) console.log('\n' + dgLine);
+  }
   process.exit(0);
 }
 
@@ -377,7 +383,7 @@ if (has('matrix')) {
 // ---- 作者侧发布前自检（C1）：exit 0 PASS / 1 WARN / 2 FAIL（与 audit_check 同口径）----
 if (has('preflight')) {
   var target = arg('preflight', '.');
-  var pfr = preflightRepo(target || '.');
+  var pfr = preflightRepo(target || '.', { hostVersion: arg('host', null) });
   if (has('json')) console.log(JSON.stringify(pfr, null, 2));
   else console.log(renderPreflight(pfr));
   process.exit(pfr.verdict === 'PASS' ? 0 : pfr.verdict === 'WARN' ? 1 : 2);
@@ -402,7 +408,7 @@ if (has('disclose')) {
 // 与清理器的分工：清理器动的是**数据**（回收区、7 天可还原），这里动的是**配置**。
 // 所有写回动作都必须显式 --yes，并且写回前自动给当前状态再打一份快照。
 if (has('boot')) {
-  var bres = bootPreflight(home());
+  var bres = bootPreflight(home(), { hostVersion: arg('host', null) });
   if (has('json')) console.log(JSON.stringify(bres, null, 2));
   else console.log(renderBoot(bres));
   process.exit(bres.canBoot ? 0 : 1);
@@ -437,7 +443,7 @@ if (has('rollback')) {
   process.exit(0);
 }
 if (has('recover')) {
-  var pre = bootPreflight(home());
+  var pre = bootPreflight(home(), { hostVersion: arg('host', null) });
   if (!has('yes')) {
     console.log(renderBoot(pre));
     var candidates = listCheckpoints(home());

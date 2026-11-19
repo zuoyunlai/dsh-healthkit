@@ -30,6 +30,21 @@ function readRulesSource(root) {
   try { return fs.readFileSync(path.join(root, 'src', 'rules.mjs'), 'utf8'); } catch (e) { return ''; }
 }
 
+const SEV_RANK = { P0: 0, P1: 1, P2: 2, INFO: 3 };
+
+// 条件型严重度（`severity: yamlUnavailable ? 'P2' : 'P0'`）必须按**最坏值**记。
+//
+// 0.13.1 审计 P2-1：第一版用「先匹配带引号的字面量」取严重度，R2c 因此被记成 P2，
+// 而它真正的语义是「YAML 解析失败时是 P0」。一个把 P0 写成 P2 的矩阵，
+// 连带把「门禁」列的判断也带偏。宁可显示 P0（条件），不可显示 P2。
+function severityOf(tail) {
+  const seg = tail.slice(tail.indexOf('severity:'), tail.indexOf('severity:') + 200);
+  const lits = (seg.match(/'(P0|P1|P2|INFO)'/g) || []).map((s) => s.replace(/'/g, ''));
+  if (!lits.length) return { severity: '', conditional: false };
+  const sorted = Array.from(new Set(lits)).sort((a, b) => (SEV_RANK[a] === undefined ? 9 : SEV_RANK[a]) - (SEV_RANK[b] === undefined ? 9 : SEV_RANK[b]));
+  return { severity: sorted[0], conditional: sorted.length > 1, all: sorted };
+}
+
 // 从规则源码里抽取 ruleId → {severity, dimension, title}。
 //
 // 两点实测教训（第一版正则直接漏了 R2c）：
@@ -46,7 +61,7 @@ export function extractRules(root0) {
   while ((m = idRe.exec(src)) !== null) {
     const id = m[1];
     const tail = src.slice(m.index, m.index + 900);
-    const sev = (tail.match(/severity:\s*'([^']+)'/) || tail.match(/severity:\s*[^,\n]*?'(P0|P1|P2|INFO)'/) || [])[1] || '';
+    const sev = severityOf(tail);
     const dim = (tail.match(/dimension:\s*'([^']+)'/) || [])[1] || '';
     const tIdx = tail.indexOf('title:');
     let title = '';
@@ -57,7 +72,18 @@ export function extractRules(root0) {
     } else {
       title = '（源码里没找到 title，见规则本身）';
     }
-    if (!out.has(id)) out.set(id, { ruleId: id, severity: sev, dimension: dim, title: title.slice(0, 80) });
+    if (!out.has(id)) {
+      out.set(id, {
+        ruleId: id,
+        severity: sev.severity,
+        conditional: sev.conditional === true,
+        severityAll: sev.all || [],
+        dimension: dim,
+        // 条件型规则的标题常只覆盖一个分支（R2c 的首个字面量是 YAML 缺失那一支），
+        // 加个标记提醒读者去看源码，不要让矩阵替规则下结论。
+        title: (title.slice(0, 72) + (sev.conditional ? "（条件型，全文见源码）" : "")),
+      });
+    }
   }
   return Array.from(out.values()).sort((a, b) => {
     const pa = a.ruleId.match(/^R(\d+)(.*)$/);
@@ -75,6 +101,8 @@ export function buildMatrix(root0) {
   const rows = rules.map((r) => ({
     ruleId: r.ruleId,
     severity: r.severity || '—',
+    conditional: r.conditional === true,
+    severityAll: r.severityAll || [],
     dimension: r.dimension || '—',
     title: r.title,
     audit: true,                       // 所有规则都进体检
@@ -104,9 +132,13 @@ export function renderMatrix(m) {
   L.push('| 规则 | 严重度 | 维度 | 抓什么 | 体检 | 探针 | 清理 | 门禁 |');
   L.push('| --- | --- | --- | --- | --- | --- | --- | --- |');
   for (const r of m.rows) {
-    L.push('| `' + r.ruleId + '` | ' + r.severity + ' | ' + r.dimension + ' | ' + r.title + ' |' +
+    const sevCell = r.severity + (r.conditional ? '（条件：' + r.severityAll.join(' / ') + '）' : '');
+    L.push('| `' + r.ruleId + '` | ' + sevCell + ' | ' + r.dimension + ' | ' + r.title + ' |' +
       ' ✓ |' + (r.boot ? ' ✓ |' : ' |') + (r.clean ? ' ✓ |' : ' |') + (r.gate ? ' ✓ |' : ' |'));
   }
+  L.push('');
+  L.push('> 严重度按**最坏值**记：源码里写成 `yamlUnavailable ? \'P2\' : \'P0\'` 这种条件型，矩阵显示 `P0（条件：…）`。');
+  L.push('> 把 P0 记成 P2 会让「门禁」列跟着失真，所以宁可显示最坏值再标注条件。');
   L.push('');
   L.push('## 预启动探针直接复判的 ' + m.bootCodes.length + ' 类');
   L.push('');

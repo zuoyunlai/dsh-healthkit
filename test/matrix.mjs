@@ -30,6 +30,14 @@ ok('源码里的 ruleId 全部进了矩阵', missing.length === 0, '缺：' + mi
 
 // ② 每条规则都有严重度与维度（解析失败的会是空串）
 ok('每条规则都解析出严重度', m.rows.every((r) => /^(P0|P1|P2|INFO)$/.test(r.severity)), m.rows.filter((r) => !r.severity).map((r) => r.ruleId).join(','));
+
+// ②b 条件型严重度必须按最坏值记（0.13.1 审计 P2-1：R2c 曾被记成 P2，实为 P0）
+const r2c = m.rows.find((r) => r.ruleId === 'R2c');
+ok('R2c 在矩阵里存在', !!r2c);
+ok('R2c 的严重度按最坏值记 P0（不是 P2）', r2c && r2c.severity === 'P0', r2c && r2c.severity);
+ok('R2c 标注为条件型', r2c && r2c.conditional === true);
+ok('R2c 的两个取值都被记下', r2c && r2c.severityAll.indexOf('P0') !== -1 && r2c.severityAll.indexOf('P2') !== -1, r2c && r2c.severityAll.join('/'));
+ok('矩阵正文里写了「条件：」说明', fs.readFileSync(path.join(root, 'docs', 'MATRIX.md'), 'utf8').indexOf('（条件：') !== -1);
 ok('每条规则都解析出维度', m.rows.every((r) => r.dimension && r.dimension !== '—'), m.rows.filter((r) => r.dimension === '—').map((r) => r.ruleId).join(','));
 ok('每条规则都有标题', m.rows.every((r) => r.title.length > 2));
 

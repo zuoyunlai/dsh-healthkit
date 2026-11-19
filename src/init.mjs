@@ -5,6 +5,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { dshHome, dataDir, LEGACY_PACKAGE_NAME } from './paths.mjs';
+import { buildTools, TOOL_COUNT } from './toolface.mjs';
 
 function readJson(p, fallback) {
   try { return JSON.parse(fs.readFileSync(p, 'utf8')); } catch (e) { return fallback; }
@@ -61,10 +62,17 @@ export function inspect(home) {
     out.steps.push('已装但未挂载：把 "dsh-healthkit" 加进 profile package.json 的 dsh.profile.bundles');
   }
   if (out.ready) {
-    out.steps.push('已就绪：重启宿主后，工具面会出现 audit_run / audit_report / audit_clean / audit_trend / audit_digest / audit_feedback / audit_findings / audit_explain / audit_plan / audit_trim / audit_capabilities / audit_retire / audit_diff / audit_verify / audit_check / audit_recommend / audit_boot / audit_checkpoint / audit_rollback（共 19 个）');
+    // 工具名与个数**单一真源**：从工具面现算，不再手写。
+    // 历史上这里的手写清单与 buildTools 差过四次（14→15→16→19），每次都要人肉同步。
+    out.steps.push('已就绪：重启宿主后，工具面会出现 ' + toolNamesText() + '（共 ' + TOOL_COUNT + ' 个）');
     out.steps.push('先跑一次基线：audit_report（报告落在会话工作区）');
   }
   return out;
+}
+
+function toolNamesText() {
+  try { return buildTools({}).map((t) => t.name).join(' / '); }
+  catch (e) { return '（工具面读取失败：' + ((e && e.message) || e) + '）'; }
 }
 
 export function renderInit(r) {

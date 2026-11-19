@@ -15,6 +15,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { dataDir, dshHome } from './paths.mjs';
+import { loadYaml } from './util.mjs';
+import { satisfies } from './verrange.mjs';
 
 export const CHECKPOINT_SCHEMA = 'dsh-healthkit/checkpoint/v1';
 export const BOOT_SCHEMA = 'dsh-healthkit/boot/v1';
@@ -142,8 +144,12 @@ export function prune(home0, keep) {
 //   ② 每个 bundle 在 node_modules 里存在（缺 = 宿主启动时找不到入口）；
 //   ③ 每个 bundle 的 package.json 声明了 dsh.bundle（缺 = 宿主**静默跳过**，R23）；
 //   ④ cordis.patch.yml 能解析且 id 不重复（解析失败 = 补丁整段失效）。
-export function bootPreflight(home0) {
+export function bootPreflight(home0, opts) {
+  const o = opts || {};
   const home = home0 || dshHome();
+  // 真 YAML 解析器（可从 profile 解析到）。解析不了就判 unknown，**不得**升级成 blocker：
+  // 没有解析器只说明「我们判不了」，不说明用户的配置坏了。见下方 patch 段。
+  const yaml = o.yaml !== undefined ? o.yaml : loadYaml(home);
   const blockers = [];
   const warnings = [];
   const profiles = [];
@@ -198,39 +204,90 @@ export function bootPreflight(home0) {
       // 静默跳过不阻塞启动，但这正是「升完级插件不见了」的元凶，必须报
       warnings.push({ code: 'bundle-no-manifest', profile: name, detail: '没声明 dsh.bundle，宿主会静默跳过：' + info.noManifest.join('、') });
     }
-    // patch 解析
+    // patch 解析：用**真解析器**，不用启发式。
+    //
+    // 0.13.0 第一版是「统计整个文件里引号奇偶 + 找 tab 缩进」。那是错的：
+    // 一条含英文撇号的注释（`# don't`）就会让引号计数落单 → 判成「引号未闭合」→
+    // blocker → `--recover --yes` 把用户配置回滚。**假红接上自动写回**，比假红本身危险得多。
+    //
+    // 现在三条规矩：
+    //   ① 有解析器：能 parse 就 parse，抛错才是真 blocker（tab 缩进会真的让 YAML 抛）；
+    //   ② 没有解析器：`unknown` + warning，**绝不由它触发回滚**；
+    //   ③ id 重复从解析结构里取，不再用正则扫文本。
     const patchPath = ['cordis.patch.yml', 'cordis.patch.yaml'].map((f) => path.join(dir, f)).find((p) => fs.existsSync(p));
     if (patchPath) {
       let text = '';
       try { text = fs.readFileSync(patchPath, 'utf8'); } catch (e) { text = ''; }
-      if (!text.trim()) info.patch = 'empty';
-      else {
-        // 只做「疑似 YAML 坏」的启发式判断，不引 yaml 依赖：块结构里出现 tab 缩进、
-        // 或者出现未闭合的引号，都在真实故障样本里出现过。
-        const badTab = /\t/.test(text.split('\n').filter((l) => /^\s/.test(l)).join('\n'));
-        const unbalanced = (text.match(/"/g) || []).length % 2 === 1 || (text.match(/'/g) || []).length % 2 === 1;
-        if (badTab) { info.patch = 'bad-indent'; blockers.push({ code: 'patch-indent', profile: name, detail: patchPath.replace(home, '~/.dsh') + ' 缩进里有 tab，YAML 会整体解析失败' }); }
-        else if (unbalanced) { info.patch = 'unbalanced-quote'; blockers.push({ code: 'patch-quote', profile: name, detail: patchPath.replace(home, '~/.dsh') + ' 引号未闭合' }); }
-        const ids = (text.match(/^\s*-\s*id:\s*(\S+)/gm) || []).map((l) => l.replace(/^\s*-\s*id:\s*/, '').trim());
-        const dup = ids.filter((x, i) => ids.indexOf(x) !== i);
-        if (dup.length) warnings.push({ code: 'patch-duplicate-id', profile: name, detail: '补丁 id 重复：' + Array.from(new Set(dup)).join('、') });
+      if (!text.trim()) {
+        info.patch = 'empty';
+      } else if (!yaml || typeof yaml.parse !== 'function') {
+        info.patch = 'unknown';
+        warnings.push({
+          code: 'patch-unparsed',
+          profile: name,
+          detail: patchPath.replace(home, '~/.dsh') + ' 判不了（本机找不到 YAML 解析器）；这只说明我们判不了，不代表配置有问题',
+        });
+      } else {
+        let parsed = null;
+        let parseErr = null;
+        try { parsed = yaml.parse(text); } catch (e) { parseErr = String((e && e.message) || e); }
+        if (parseErr) {
+          info.patch = 'parse-error';
+          blockers.push({
+            code: 'patch-parse',
+            profile: name,
+            detail: patchPath.replace(home, '~/.dsh') + ' 解析失败：' + parseErr.split('\n')[0],
+          });
+        } else {
+          const entries = Array.isArray(parsed) ? parsed : (parsed && Array.isArray(parsed.insert) ? parsed.insert : []);
+          const ids = entries
+            .map((e) => (e && typeof e === 'object' ? e.id : null))
+            .filter((x) => typeof x === 'string' && x);
+          const dup = ids.filter((x, i) => ids.indexOf(x) !== i);
+          if (dup.length) {
+            warnings.push({ code: 'patch-duplicate-id', profile: name, detail: '补丁 id 重复：' + Array.from(new Set(dup)).join('、') });
+            info.patch = 'duplicate-id';
+          }
+        }
       }
     }
     profiles.push(info);
   }
 
   const canBoot = blockers.length === 0;
+  // 宿主版本对账（P1-4）：声明了引擎范围就核一下——前提是有人告诉我们宿主版本。
+  // 桌面端没有把版本暴露给插件（profile 里也没有 @deepseek-ai/dsh），所以这里只能「给就核、
+  // 不给就说判不了」，绝不假装通过。CLI 用 `--host 0.2.2-rc.5` 传进来。
+  const compat = hostCompat(home, o.hostVersion);
+  if (compat.verdict === 'mismatch') {
+    blockers.push({ code: 'host-version', detail: '本插件声明 engines.dsh = ' + compat.declared + '，不覆盖当前宿主 ' + compat.hostVersion });
+  }
   return {
     schema: BOOT_SCHEMA,
     at: new Date().toISOString(),
-    ok: canBoot,
-    canBoot,
+    ok: canBoot && compat.verdict !== 'mismatch',
+    canBoot: canBoot && compat.verdict !== 'mismatch',
     profiles,
     blockers,
     warnings,
+    compat,
     // 判不了的事写明：真正的启动还取决于宿主版本与插件运行时行为，静态探针到不了那一步。
     unknown: ['宿主版本兼容性', '插件运行时抛错', '端口占用'],
   };
+}
+
+// 读本插件自己的 engines.dsh / dsh.compatibility.dsh，和给定宿主版本比对。
+export function hostCompat(home0, hostVersion) {
+  let declared = null;
+  try {
+    const pkg = JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
+    declared = (pkg.engines && pkg.engines.dsh) || (pkg.dsh && pkg.dsh.compatibility && pkg.dsh.compatibility.dsh) || null;
+  } catch (e) { declared = null; }
+  if (!declared) return { declared: null, hostVersion: hostVersion || null, verdict: 'undeclared', note: '本插件没有声明 engines.dsh' };
+  if (!hostVersion) return { declared, hostVersion: null, verdict: 'unknown', note: '宿主没把版本告诉插件；要核对就传 --host <版本>' };
+  const r = satisfies(hostVersion, declared);
+  if (r === null) return { declared, hostVersion, verdict: 'unknown', note: '版本或范围语法超出支持范围，判不了' };
+  return { declared, hostVersion, verdict: r ? 'ok' : 'mismatch', note: r ? '声明覆盖当前宿主' : '声明**不覆盖**当前宿主' };
 }
 
 export function renderBoot(b) {
@@ -241,6 +298,10 @@ export function renderBoot(b) {
       (p.missing.length ? '，缺 ' + p.missing.length : '') +
       (p.noManifest.length ? '，无 manifest ' + p.noManifest.length : '') +
       '，patch ' + p.patch);
+  }
+  if (b.compat) {
+    L.push('  · 宿主版本对账：' + b.compat.verdict + ' — ' + (b.compat.note || '') +
+      (b.compat.declared ? '（声明 ' + b.compat.declared + (b.compat.hostVersion ? '，宿主 ' + b.compat.hostVersion : '') + '）' : ''));
   }
   for (const x of b.blockers) L.push('  ✗ [' + x.code + '] ' + (x.profile ? x.profile + '：' : '') + x.detail);
   for (const x of b.warnings) L.push('  ! [' + x.code + '] ' + (x.profile ? x.profile + '：' : '') + x.detail);

@@ -7,6 +7,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { dataDir } from './paths.mjs';
+import { note } from './degrade.mjs';
 
 const MAX_RUNS = 60;   // 保留最近 60 次；再多也没人翻
 
@@ -104,14 +105,16 @@ function trimRuns(dir) {
 export function listRuns(home) {
   const dir = runsDir(home);
   const out = [];
+  let badSnapshots = 0;
   try {
     for (const f of fs.readdirSync(dir).filter(function (x) { return /\.json$/.test(x); })) {
       try {
         const j = JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8'));
         out.push({ file: f, at: j.at, stamp: j.stamp, seq: j.seq || 0, score: j.score, scenario: j.scenario, count: (j.findings || []).length });
-      } catch (e) { /* 坏快照跳过 */ }
+      } catch (e) { badSnapshots += 1; }
     }
-  } catch (e) { /* 没有 runs 目录 */ }
+  } catch (e) { if (e && e.code !== 'ENOENT') note('runs-unreadable', '运行快照目录读不出：' + ((e && e.message) || e)); }
+  if (badSnapshots) note('runs-bad-json', '有 ' + badSnapshots + ' 份运行快照解析失败（跨次差异可能失真）', badSnapshots);
   // 按**记录里的时间**排序，不按文件名。
   //
   // 2026-11-16 踩过：文件名在同毫秒冲突时会加 '-1' 后缀，

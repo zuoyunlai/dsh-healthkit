@@ -10,7 +10,9 @@ import path from 'node:path';
 const home = fs.mkdtempSync(path.join(os.tmpdir(), 'healthkit-apply-'));
 process.env.DSH_HOME = home;
 
-const { apply, resolveWebServer } = await import('../index.js');
+const { apply, resolveWebServer, buildTools } = await import('../index.js');
+// 工具名/个数从工具面现算（单一真源），不再手写清单
+const EXPECTED = buildTools({}).map((t) => t.name);
 
 const registered = [];
 const routes = [];
@@ -53,8 +55,8 @@ const statusPath = path.join(home, 'dsh-healthkit', 'plugin-status.json');
 assert.ok(fs.existsSync(statusPath), 'apply 应写出 plugin-status.json');
 const st = JSON.parse(fs.readFileSync(statusPath, 'utf8'));
 
-assert.equal(st.registered.length, 19, '19 个工具都应注册，实得 ' + st.registered.length + ': ' + st.registered.join(','));
-for (const n of ['audit_run', 'audit_report', 'audit_clean', 'audit_trend', 'audit_findings', 'audit_explain', 'audit_plan', 'audit_trim', 'audit_capabilities', 'audit_retire', 'audit_diff', 'audit_verify', 'audit_check', 'audit_recommend', 'audit_boot', 'audit_checkpoint', 'audit_rollback']) {
+assert.equal(st.registered.length, EXPECTED.length, EXPECTED.length + ' 个工具都应注册，实得 ' + st.registered.length + ': ' + st.registered.join(','));
+for (const n of EXPECTED) {
   assert.ok(st.registered.includes(n), '缺工具 ' + n);
 }
 assert.deepEqual(st.failures, [], '不应有注册失败：' + JSON.stringify(st.failures));

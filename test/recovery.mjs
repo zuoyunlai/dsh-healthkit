@@ -67,13 +67,45 @@ const b4 = bootPreflight(home);
 ok('package.json 解析失败是 blocker', b4.canBoot === false && b4.blockers.some((x) => x.code === 'package-json'));
 fs.writeFileSync(PKG, PKG_BODY);
 
-// ⑤ patch 里有 tab 缩进 → blocker
+// ⑤ patch 真解析失败才是 blocker（0.13.1 起用真 YAML 解析器，不再用启发式）
+//
+// 用注入的桩解析器保证离线确定性：真解析器只能从真机 profile 解析到，CI 上没有。
+const STRICT_YAML = {
+  parse(text) {
+    const lines = String(text).split('\n');
+    lines.forEach((l) => { if (/^\s*\t/.test(l)) throw new Error('tab indentation is not allowed'); });
+    // 极简「列表项」解析：够本测试用
+    return lines
+      .map((l) => l.match(/^\s*-\s*id:\s*(\S+)/))
+      .filter(Boolean)
+      .map((m) => ({ id: m[1] }));
+  },
+};
 const patchBackup = fs.readFileSync(PATCH, 'utf8');
 fs.writeFileSync(PATCH, '- id: alpha\n\tname: localthing\n');
-const b5 = bootPreflight(home);
-ok('patch 缩进 tab 是 blocker', b5.canBoot === false && b5.blockers.some((x) => x.code === 'patch-indent'), JSON.stringify(b5.blockers));
+const b5 = bootPreflight(home, { yaml: STRICT_YAML });
+ok('patch 真解析失败是 blocker', b5.canBoot === false && b5.blockers.some((x) => x.code === 'patch-parse'), JSON.stringify(b5.blockers));
 fs.writeFileSync(PATCH, patchBackup);
-ok('复原后又能启动', bootPreflight(home).canBoot === true);
+ok('复原后又能启动', bootPreflight(home, { yaml: STRICT_YAML }).canBoot === true);
+
+// ⑤b 回归：注释里的英文撇号**不许**被判成「引号未闭合」（0.13.0 的启发式会误判）
+fs.writeFileSync(PATCH, "# don't touch this\n- id: alpha\n  name: localthing\n");
+const b5b = bootPreflight(home, { yaml: STRICT_YAML });
+ok('注释里的撇号不再造成假 blocker', b5b.canBoot === true && b5b.blockers.length === 0, JSON.stringify(b5b.blockers));
+
+// ⑤c 没有解析器 → unknown + warning，且**不得**升级成 blocker（否则会触发回滚）
+const b5c = bootPreflight(home, { yaml: null });
+ok('无解析器时判 unknown', b5c.profiles[0].patch === 'unknown', b5c.profiles[0].patch);
+ok('无解析器时给 warning 而不是 blocker', b5c.canBoot === true && b5c.warnings.some((w) => w.code === 'patch-unparsed'), JSON.stringify(b5c.warnings.map((w) => w.code)));
+ok('unknown 不会让探针判「起不来」', b5c.blockers.length === 0);
+fs.writeFileSync(PATCH, patchBackup);
+
+// ⑤d 重复 id 从解析结构里取（不是正则扫文本）
+fs.writeFileSync(PATCH, '- id: alpha\n  name: a\n- id: alpha\n  name: b\n');
+const b5d = bootPreflight(home, { yaml: STRICT_YAML });
+ok('重复 id 是 warning', b5d.warnings.some((w) => w.code === 'patch-duplicate-id'), JSON.stringify(b5d.warnings.map((w) => w.code)));
+ok('重复 id 不封启动', b5d.canBoot === true);
+fs.writeFileSync(PATCH, patchBackup);
 
 // ⑥ checkpoint：只收白名单文件、带 sha256
 const m1 = checkpoint(home, { reason: 'test' });
@@ -122,6 +154,14 @@ ok('manifest 里的黑名单文件不会被写', r2.written.length === 0, JSON.s
 ok('黑名单/非法 profile 进 skipped', r2.skipped.length === 3, JSON.stringify(r2.skipped));
 ok('回滚失败时会话仍然给出原因', r2.ok === false);
 ok('篡改 sha 时不写文件', fs.readFileSync(PKG, 'utf8') === PKG_BODY);
+
+// ⑨b 宿主版本对账（P1-4）：声明不覆盖当前宿主时，探针要判「起不来」
+const bHostBad = bootPreflight(home, { yaml: STRICT_YAML, hostVersion: '0.2.1-rc.1' });
+ok('声明不覆盖宿主版本是 blocker', bHostBad.canBoot === false && bHostBad.blockers.some((x) => x.code === 'host-version'), JSON.stringify(bHostBad.blockers.map((x) => x.code)));
+const bHostOk = bootPreflight(home, { yaml: STRICT_YAML, hostVersion: '0.2.2-rc.5' });
+ok('声明覆盖宿主版本时不受影响', bHostOk.canBoot === true && bHostOk.compat.verdict === 'ok', JSON.stringify(bHostOk.compat));
+const bHostUnknown = bootPreflight(home, { yaml: STRICT_YAML });
+ok('没给宿主版本时判 unknown，不假装通过', bHostUnknown.compat.verdict === 'unknown' && !!bHostUnknown.compat.note, JSON.stringify(bHostUnknown.compat));
 
 // ⑩ recover：能启动就不动；起不来才回滚到最新快照
 const okState = recover(home, {});

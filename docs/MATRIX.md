@@ -9,12 +9,12 @@
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | `R1` | P1 | consistency | 装了但未挂载的依赖  | ✓ | ✓ | | ✓ |
 | `R2` | P2 | consistency | disabled 指向的包不在依赖里（疑似空转）  | ✓ | ✓ | | ✓ |
-| `R2c` | P2 | consistency | 无法读取 patch（体检器缺 YAML 解析器，不代表配置有问题） | ✓ | | | ✓ |
+| `R2c` | P0（条件：P0 / P2） | consistency | 无法读取 patch（体检器缺 YAML 解析器，不代表配置有问题）（条件型，全文见源码） | ✓ | | | ✓ |
 | `R3` | P2 | consistency | 冷静期豁免打在未安装的包上  | ✓ | | | ✓ |
 | `R3b` | P2 | consistency | 豁免锁定的版本与实装不符  | ✓ | | | ✓ |
 | `R3c` | INFO | consistency | 豁免含历史多版本列表且不含实装版本（需人工判断） | ✓ | | | |
 | `R3d` | INFO | consistency | 无法读取冷静期豁免（YAML 不可用或无该文件） | ✓ | | | |
-| `R4` | P2 | consistency | .bak/副本堆积  | ✓ | | ✓ | ✓ |
+| `R4` | P1（条件：P1 / P2） | consistency | .bak/副本堆积 （条件型，全文见源码） | ✓ | | ✓ | ✓ |
 | `R5` | P1 | consistency | 配置未纳入版本控制（profiles/.git 不存在） | ✓ | | | ✓ |
 | `R6` | P2 | consistency | 多 profile 的 providers 段已漂移 | ✓ | | | ✓ |
 | `R7` | P2 | security | 未显式声明权限 preset（ | ✓ | | | ✓ |
@@ -23,7 +23,7 @@
 | `R8` | P1 | security | 凭据文件对同进程 shell 可读（栅栏只在工具层） | ✓ | | | ✓ |
 | `R9` | P0 | security | 外部密钥不在 ~/.ssh 下  | ✓ | | | ✓ |
 | `R10` | P2 | security | 高危扩展面未设白名单/黑名单  | ✓ | | | ✓ |
-| `R11` | INFO | modelCost | 成本记账停更  | ✓ | | | |
+| `R11` | P1（条件：P1 / P2） | modelCost | 成本记账停更 （条件型，全文见源码） | ✓ | | | ✓ |
 | `R12` | P2 | modelCost | 插件声明了模型值，但无法静态核对运行时实际值（ | ✓ | | | ✓ |
 | `R13` | P1 | context | 压缩策略覆盖率  | ✓ | | | ✓ |
 | `R14` | P1 | reliability | 装载日志出现 stand-in module  | ✓ | | | ✓ |
@@ -32,7 +32,7 @@
 | `R16` | P2 | context | 同时挂载  | ✓ | | | ✓ |
 | `R17` | INFO | disk | 大目录  | ✓ | | ✓ | |
 | `R18` | INFO | disk | 引擎资产（判为不可回收）： | ✓ | | ✓ | |
-| `R19` | INFO | disk | 默认工作区不干净： | ✓ | | | |
+| `R19` | P1（条件：P1 / P2） | disk | 默认工作区不干净：（条件型，全文见源码） | ✓ | | | ✓ |
 | `R19b` | INFO | disk | 默认工作区里有  | ✓ | | | |
 | `R20` | P2 | plugins | 能力冗余： | ✓ | | | ✓ |
 | `R21` | INFO | plugins | 未发现本地 agent preset（全部为内置预设） | ✓ | | | |
@@ -43,6 +43,9 @@
 | `R22` | P0 | reliability | file:/link: 依赖目标不存在  | ✓ | ✓ | | ✓ |
 | `R23` | P0 | reliability | bundle 未声明 dsh.bundle，宿主会静默跳过  | ✓ | ✓ | | ✓ |
 | `R24` | P0 | reliability | profile「 | ✓ | ✓ | | ✓ |
+
+> 严重度按**最坏值**记：源码里写成 `yamlUnavailable ? 'P2' : 'P0'` 这种条件型，矩阵显示 `P0（条件：…）`。
+> 把 P0 记成 P2 会让「门禁」列跟着失真，所以宁可显示最坏值再标注条件。
 
 ## 预启动探针直接复判的 5 类
 

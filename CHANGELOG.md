@@ -1,5 +1,33 @@
 # CHANGELOG
 
+## 未发版（2026-11-19 · 第三方独立审计反哺批）
+
+总评 6.8/10 的那次审计指出：**设计思想是对的，问题集中在「自己的承诺和自己的测试没有被同一套机制校验」**。
+本批逐条修。19 个工具，测试 41 组。
+
+- **P1-1 承诺与能力声明脱钩**：0.13.0 加了「写回 profile 配置」的回滚，但 README 仍写「不改你的配置」、
+  SECURITY.md 仍写「唯一会动文件的操作是 --clean-apply」、`dsh.capabilities` 仍只有 `tools:register`+`fs:read`。
+  现在：声明补齐为 `tools:register/fs:read/fs:write/web:serve/process:spawn`，README 给出显式例外，
+  SECURITY.md 新增「恢复面的动作面」表；新增 `test/capability-claims.mjs`（19 项断言）做**双向**对账——
+  代码里有写操作就必须声明 `fs:write`，声明了就必须真有代码用它。
+- **P1-2 探针的 YAML 启发式会误报**：原来统计整个文件引号奇偶，注释里一个英文撇号（`# don't`）就能
+  判成「引号未闭合」→ blocker → `--recover --yes` 把配置回滚。现在改用真解析器（从 profile 现解析）；
+  没有解析器时判 `unknown` + warning，**绝不触发回滚**；id 重复从解析结构取，不再正则扫文本。
+- **P1-3 守护 P0 的测试在 CI 上静默跳过**：`client-apply` 原先找不到 react 就 `process.exit(0)`，
+  而查找路径写死作者本机。现在缺 react 就用桩，**不许跳过**，并断言「断言数 ≥20」防靠跳过凑绿。
+- **P1-4 兼容声明未经验证**：新增 `src/verrange.mjs`（最小 SemVer 范围判定，含预发布段比较）+
+  `engines.dsh` 官方字段 + `--boot/--preflight --host <ver>` 对账；不覆盖当前宿主时直接判起不来/FAIL。
+- **P2-1 规则矩阵把 R2c 的 P0 记成 P2**：条件型严重度（`sev ? 'P2' : 'P0'`）改按**最坏值**记并标注
+  `（条件：P0 / P2）`；`docs/MATRIX.md` 重新生成，`test/matrix.mjs` 钉住 R2c=P0。
+- **P2-3 能力披露有已知误报**：`credentials: 'same-origin'`（fetch 选项）不再算「读凭据」；
+  每条能力附 `capabilityEvidence[{token, certainty, sample}]`，区分 `confirmed`（真的调了 API）
+  与 `heuristic`（只命中词形）。本仓自披露的 `credentials` 现为 heuristic 且样本可见。
+- **P2-4 空 catch 把失败伪装成正常**：新增 `src/degrade.mjs` 降级通道（记 code/次数/人话，取一次即清空），
+  账本坏行与快照坏文件现在会出现在结论里：「采集降级 N 处——这些地方**判不了**，不代表没问题」。
+- **P2-4b `index.js` 1,509 行**：工具面（19 个工具 + Schema + execute）整体迁出为 `src/toolface.mjs`，
+  `index.js` 只剩宿主外壳（217 行）；工具数改由 `TOOL_COUNT` 单一真源导出，`init` 文案与
+  `apply-inject` 断言都不再手写清单。
+
 ## 0.13.1 — 2026-11-19
 
 **修一个把用户右侧栏整个清空的热修**。19 个工具，测试 38 组。

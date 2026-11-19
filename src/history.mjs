@@ -10,6 +10,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { dshHome, readJson } from './util.mjs';
 import { dataDir } from './paths.mjs';
+import { note } from './degrade.mjs';
 
 const MAX_RECORDS = 2000;
 // 每 N 次记账才做一次「是否越界」检查（见 C5 注释）。
@@ -92,13 +93,19 @@ export function load() {
   } catch (e) { key = 'missing'; }
   if (loadMemo.key === key) return loadMemo.rows;
   const out = [];
+  let badLines = 0;
+  let readErr = null;
   try {
     const txt = fs.readFileSync(historyPath(), 'utf8');
     for (const line of txt.split('\n')) {
       if (!line.trim()) continue;
-      try { out.push(JSON.parse(line)); } catch (e) { /* 坏行跳过 */ }
+      try { out.push(JSON.parse(line)); } catch (e) { badLines += 1; }
     }
-  } catch (e) { /* 没有账本 */ }
+  } catch (e) { readErr = e; }
+  // 降级留痕（P2-4）：坏行/读不出会让「趋势」看起来像「首次体检」，
+  // 这是把失败伪装成正常，必须能出现在结论里。
+  if (badLines) note('history-bad-lines', '账本里有 ' + badLines + ' 行解析失败（趋势可能偏低）', badLines);
+  if (readErr && readErr.code !== 'ENOENT') note('history-unreadable', '账本读不出：' + ((readErr && readErr.message) || readErr));
   loadMemo = { key: key, rows: out };
   return out;
 }

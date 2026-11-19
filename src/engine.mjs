@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import { collect } from './collect.mjs';
 import { cachedCollect } from './cache.mjs';
 import { runRules } from './rules.mjs';
+import { drain, renderDegradations } from './degrade.mjs';
 import { score } from './score.mjs';
 import { renderReport } from './report.mjs';
 import { readJson } from './util.mjs';
@@ -95,5 +96,7 @@ export function audit(opts) {
     }
   } catch (e) { runDiff = null; }
   var report = renderReport(facts, kept, sc, { retired: retired, attr: attr, version: pkgVersion, self: self, diff: runDiff });
-  return { facts: facts, findings: kept, retired: retired, allFindings: findings, score: sc, attribution: attr, report: report, self: self, rubricVersion: sc.rubricVersion };
+  // P2-4：把本次采集期间记下的降级取出来（并清空，避免下次重复）。
+  var degradations = drain();
+  return { facts: facts, findings: kept, retired: retired, allFindings: findings, score: sc, attribution: attr, report: report, self: self, rubricVersion: sc.rubricVersion, degradations: degradations };
 }

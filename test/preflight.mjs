@@ -6,8 +6,11 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const { preflightRepo, renderPreflight, PREFLIGHT_SCHEMA } = await import('../src/preflight.mjs');
+const here = path.dirname(fileURLToPath(import.meta.url));
+const root = path.join(here, '..');
 
 let n = 0;
 function ok(name, cond, detail) {
@@ -31,7 +34,7 @@ const GOOD_PKG = {
   description: 'a good plugin',
   license: 'MIT',
   repository: { type: 'git', url: 'git+https://github.com/x/y.git' },
-  engines: { node: '>=20' },
+  engines: { node: '>=20', dsh: '>=0.2.2-0 <0.3.0' },
   keywords: ['dsh-plugin'],
   main: './index.js',
   dsh: { bundle: { patch: './cordis.patch.yml' } },
@@ -118,6 +121,15 @@ ok('渲染首行给判词', /发布前自检：(PASS|WARN|FAIL)/.test(txt.split(
 // ⑬ 本仓自检必须 PASS（这就是「作者用自己的工具」）
 const self = preflightRepo(path.resolve('.'));
 ok('本仓发布前自检 PASS', self.verdict === 'PASS', JSON.stringify(self.blockers) + JSON.stringify(self.warnings.map((w) => w.code)));
+
+// ⑭ 宿主兼容声明对账（P1-4）
+ok('本仓声明了 engines.dsh', !!(GOOD_PKG.engines && GOOD_PKG.engines.dsh) || (() => { const p = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')); return !!(p.engines && p.engines.dsh); })());
+const selfOk = preflightRepo(path.resolve('.'), { hostVersion: '0.2.2-rc.5' });
+ok('覆盖当前宿主时给建议而不是阻断', selfOk.blockers.length === 0 && selfOk.infos.some((i) => i.code === 'engines-dsh-ok'), JSON.stringify(selfOk.infos.map((i) => i.code)));
+const selfBad = preflightRepo(path.resolve('.'), { hostVersion: '0.2.1-rc.1' });
+ok('不覆盖当前宿主时是阻断', selfBad.verdict === 'FAIL' && selfBad.blockers.some((b) => b.code === 'engines-dsh-mismatch'), JSON.stringify(selfBad.blockers.map((b) => b.code)));
+const noEngines = repo('noengines', { 'package.json': Object.assign({}, GOOD_PKG, { engines: { node: '>=20' } }), 'index.js': '1;\n', 'cordis.patch.yml': '- id: x\n' });
+ok('没有 engines.dsh 给警告', preflightRepo(noEngines).warnings.some((w) => w.code === 'no-engines-dsh'), JSON.stringify(preflightRepo(noEngines).warnings.map((w) => w.code)));
 
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log('preflight: 通过（' + n + ' 项断言 · 不可逆事故拦截 / 风格降级为警告 / 自检 PASS）');

@@ -80,11 +80,27 @@ ok('回环明文不写成红线', !df.capabilityRedLines.some((x) => /localhost|
 ok('真主机明文才写红线', df.capabilityRedLines.some((x) => /plain\.example\.com/.test(x)), JSON.stringify(df.capabilityRedLines));
 
 // ⑧ 自披露：钉住 SECURITY.md 的「不联网」承诺
-const self = disclosePackage(path.resolve('.'));
-ok('本仓自披露**不含 network**（= SECURITY.md 的不联网承诺可机检）', !self.capabilities.includes('network'), self.capabilities.join(','));
+const self = disclosePackage(path.resolve('.'));ok('本仓自披露**不含 network**（= SECURITY.md 的不联网承诺可机检）', !self.capabilities.includes('network'), self.capabilities.join(','));
 ok('本仓自披露含 fs-read / fs-write / host-runtime', ['fs-read', 'fs-write', 'host-runtime'].every((t) => self.capabilities.includes(t)), self.capabilities.join(','));
 ok('本仓自披露不含网络红线', !self.capabilityRedLines.some((x) => /network access/.test(x)), JSON.stringify(self.capabilityRedLines));
 ok('披露带 checked 时间戳', /^\d{4}-\d\d-\d\dT/.test(self.capabilityCheckedAt));
+
+// ⑧b 确定性分级（0.13.1 审计 P2-3）：每条能力都要能被人复核
+ok('每条能力都带 evidence', self.capabilities.every((t) => (self.capabilityEvidence || []).some((e) => e.token === t)), self.capabilities.join(','));
+ok('evidence 的 certainty 只能是 confirmed/heuristic',
+  (self.capabilityEvidence || []).every((e) => e.certainty === 'confirmed' || e.certainty === 'heuristic'),
+  JSON.stringify((self.capabilityEvidence || []).map((e) => e.token + ':' + e.certainty)));
+ok('evidence 带可读样本', (self.capabilityEvidence || []).every((e) => typeof e.sample === 'string'));
+ok('本仓的 credentials 只能是 heuristic（它来自护栏正则，不是真的读凭据）',
+  (() => { const e = (self.capabilityEvidence || []).find((x) => x.token === 'credentials'); return !e || e.certainty === 'heuristic'; })(),
+  JSON.stringify((self.capabilityEvidence || []).find((x) => x.token === 'credentials')));
+
+// ⑧c `credentials: 'same-origin'` 是 fetch 选项，不许当成「读凭据」
+const credOpt = path.join(home, 'cred-opt');
+mkpkg(credOpt, { 'client.js': "fetch('/api/x', { credentials: 'same-origin' });\n" });
+const dc = disclosePackage(credOpt);
+ok('fetch 的 credentials 选项不算 credentials 能力', !dc.capabilities.includes('credentials'), dc.capabilities.join(','));
+ok('fetch 的 credentials 选项也不算网络（同源相对）', !dc.capabilities.includes('network'), dc.capabilities.join(','));
 
 // ⑨ 全量披露：跳过宿主自带 @deepseek-ai/*、跨 profile 去重
 const pkg = {

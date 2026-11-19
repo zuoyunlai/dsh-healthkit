@@ -10,6 +10,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+import { satisfies } from './verrange.mjs';
+
 export const PREFLIGHT_SCHEMA = 'dsh-healthkit/preflight/v1';
 
 function readJson(p) {
@@ -33,7 +35,8 @@ function checkEntry(root, spec) {
   return names.some((x) => re.test(x)) ? null : s;
 }
 
-export function preflightRepo(dir0) {
+export function preflightRepo(dir0, opts) {
+  const o = opts || {};
   const root = path.resolve(dir0 || '.');
   const blockers = [];
   const warnings = [];
@@ -85,6 +88,18 @@ export function preflightRepo(dir0) {
   if (!pkg.license) add(warnings, 'no-license', '没有 license 字段：收录清单通常要求明确许可');
   if (!pkg.repository && !pkg.homepage) add(warnings, 'no-repository', '没有 repository/homepage：目录无法给出「去仓库看看」的入口');
   if (!pkg.engines || !pkg.engines.node) add(warnings, 'no-engines', '没有 engines.node：装到老 Node 上会在运行时才炸');
+
+  // ④b 宿主兼容声明（P1-4）
+  //     `engines.dsh` 是官方字段；没有它，宿主与目录都无法判断这个包能不能装。
+  //     声明了却不覆盖真机版本，比不声明更糟——那是**声称兼容但实际不兼容**（0.13.0 就是这样）。
+  const declaredDsh = (pkg.engines && pkg.engines.dsh) || (pkg.dsh && pkg.dsh.compatibility && pkg.dsh.compatibility.dsh) || null;
+  if (!declaredDsh) add(warnings, 'no-engines-dsh', '没有声明 engines.dsh：宿主升级时无法判断兼容性（0.13.0 的客户端 P0 正是这样漏出去的）');
+  else if (o.hostVersion) {
+    const r = satisfies(o.hostVersion, declaredDsh);
+    if (r === null) add(warnings, 'engines-dsh-unjudged', '声明了 engines.dsh=' + declaredDsh + '，但与宿主 ' + o.hostVersion + ' 的比对超出支持范围，判不了');
+    else if (r === false) add(blockers, 'engines-dsh-mismatch', '声明的 engines.dsh=' + declaredDsh + ' **不覆盖**当前宿主 ' + o.hostVersion);
+    else add(infos, 'engines-dsh-ok', 'engines.dsh=' + declaredDsh + ' 覆盖当前宿主 ' + o.hostVersion);
+  }
   if (/^0\.0\./.test(String(pkg.version || ''))) add(warnings, 'version-0.0.x', '版本还是 0.0.x：一旦发出去就改不了，确认这是你要的号');
   if (Array.isArray(pkg.keywords) && pkg.keywords.indexOf('dsh-plugin') === -1) {
     add(infos, 'no-topic-keyword', 'keywords 里没有 dsh-plugin：靠 topic/keyword 抓取的清单会漏掉你');

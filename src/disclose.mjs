@@ -39,17 +39,33 @@ function resolvesToRelative(text, id) {
 }
 
 function networkHit(text) {
-  if (NET_STRONG.some((re) => re.test(text))) return true;
+  if (NET_STRONG.some((re) => re.test(text))) return { hit: true, certainty: 'confirmed' };
   const calls = text.match(/fetch\s*\(\s*[^)\n]{0,120}/g) || [];
   for (const c of calls) {
     const lit = c.match(/fetch\s*\(\s*(['"`])([^'"`]*)\1/);
-    if (lit) { if (lit[2].charAt(0) !== '/') return true; continue; }
+    if (lit) { if (lit[2].charAt(0) !== '/') return { hit: true, certainty: 'confirmed' }; continue; }
     const id = c.match(/fetch\s*\(\s*([A-Za-z_$][\w$]*)/);
-    if (!id) return true;                     // 表达式（拼接/三目）→ 当联网
-    if (!resolvesToRelative(text, id[1])) return true;
+    if (!id) return { hit: true, certainty: 'heuristic' };   // 表达式（拼接/三目）→ 判不了，记启发式
+    if (!resolvesToRelative(text, id[1])) return { hit: true, certainty: 'heuristic' };
   }
-  return false;
+  return { hit: false, certainty: null };
 }
+
+// 每条 token 的「确定性」等级（0.13.1 审计 P2-3）。
+//
+// confirmed = 直接调用了对应 API（readFileSync / spawnSync / node:http…），看得见行为；
+// heuristic = 只命中词形（credentials / llm / subagent），可能只是变量名或注释里的词。
+// 目录里最高频的红线是「读凭据且有网络」（872 条），把 heuristic 混进 confirmed 会直接造成冤枉，
+// 所以对外同时给 `capabilities`（兼容目录）与 `capabilityEvidence`（带确定性，供人复核）。
+export const CERTAINTY = {
+  'fs-read': 'confirmed', 'fs-write': 'confirmed', env: 'confirmed',
+  network: 'confirmed', shell: 'confirmed', 'dynamic-code': 'confirmed',
+  'host-runtime': 'confirmed',
+  credentials: 'heuristic', llm: 'heuristic', subagent: 'heuristic',
+};
+
+// `credentials: 'same-origin'` 是 fetch 的选项，不是「读凭据」。先把它抹掉再判。
+const FETCH_CRED_OPTION = /credentials\s*:\s*['"][^'"]*['"]/g;
 
 export const SIGNALS = {
   'fs-read': [/\breadFileSync\s*\(/, /\breaddirSync\s*\(/, /\bstatSync\s*\(/, /\bexistsSync\s*\(/, /\bcreateReadStream\s*\(/, /\blstatSync\s*\(/],
@@ -136,15 +152,30 @@ export function disclosePackage(dir, opts) {
   walk(dir, found, budget);
   const text = found.map((f) => f.text).join('\n');
   const caps = [];
+  const evidence = [];
+  // 抹掉 fetch 的 credentials 选项：`credentials: 'same-origin'` 不是「读凭据」
+  const scanText = text.replace(FETCH_CRED_OPTION, ' ');
   for (const t of CAPABILITY_TOKENS) {
-    if (t === 'network') { if (networkHit(text)) caps.push(t); continue; }
-    if (SIGNALS[t].some((re) => re.test(text))) caps.push(t);
+    if (t === 'network') {
+      const r = networkHit(scanText);
+      if (r.hit) { caps.push(t); evidence.push({ token: t, certainty: r.certainty, sample: '网络客户端调用' }); }
+      continue;
+    }
+    const hitRe = SIGNALS[t].find((re) => re.test(scanText));
+    if (!hitRe) continue;
+    caps.push(t);
+    // 取命中所在那一行做样本（截断），让人能自己复核这条判定
+    const line = (scanText.split('\n').find((l) => hitRe.test(l)) || '').trim().slice(0, 120);
+    evidence.push({ token: t, certainty: CERTAINTY[t] || 'heuristic', sample: line });
   }
   const entry = {
     name: String(pkg.name || path.basename(dir)),
     version: String(pkg.version || ''),
     capabilities: caps,
-    capabilityRedLines: redLinesOf(pkg, caps, text),
+    // 与目录字段兼容的 `capabilities` 之上，再给每条的确定性与样本：
+    // heuristic（只命中词形）不该被当成「它真的在读凭据」。
+    capabilityEvidence: evidence,
+    capabilityRedLines: redLinesOf(pkg, caps, scanText),
     capabilityCheckedAt: new Date(o.now || Date.now()).toISOString(),
     scanned: { files: found.length, bytes: budget.bytes, capped: budget.files >= MAX_FILES || budget.bytes >= MAX_BYTES },
     // 读不到 / 没读的东西明写：静态披露最坏的用法是让人以为「没列出来就是没有」
