@@ -1,5 +1,29 @@
 # ISSUES
 
+## #4（已修，0.13.1）客户端 `title()` 抛 ReferenceError → 用户的右侧栏整块变空
+
+- **现象**：DSH 升级到 `0.2.2-rc.5` 后，右侧栏展开是空的，找不到「体检」，
+  而且**其它插件的标签一起消失**（用户原话：「滑块的右侧栏里面没有条目了」）。
+- **根因**：`client.js` 的 `apply()` 里注册 tab 类型时写的是
+  `title: function () { return lang.title; }`，而 `lang` 只在组件内由 `useLang(ctx)` 造出来，
+  **apply 作用域根本没有这个变量**（该行自 0.5.3 `df338d8` 起就存在）。
+  旧宿主不在渲染侧栏时调 `title()`，所以一直没暴露；rc.5 的「引导页 + 标签条」
+  会遍历所有注册项调 `title()` 画胶囊 → 一次 `ReferenceError: lang is not defined`
+  就让整棵子树渲染失败，右栏空白。
+- **为什么「别的插件也没了」**：渲染同一个引导页时一个 provider 抛异常，整片子树都没了。
+  所以症状很像宿主回归，实际是单个插件的 title 崩了。
+- **诊断路径（可复用）**：① `--boot` 静态探针 → 通过（说明配置能加载，问题在客户端运行时）；
+  `plugin-status.json` → 宿主半边 19 工具 + 面板 4 路由都正常；
+  ② 从 `app.asar` 里抽出 `@deepseek-ai/dsh-client-ui-sidebar-right` 的 README/契约，
+  确认 `title()` 是宿主调用面；③ 用假模块系统 + 假 ctx 在 Node 里真跑 `client.js` 复现，
+  一眼看到 `ReferenceError`。
+- **修法**：`title` 改用非 Hook 的 `pickLocale(ctx)`，外面再包 try
+  （任何 title 异常都不许冒到宿主）。新增 `test/client-apply.mjs` 24 项断言，
+  把 `title()` / `guide[].title()` / `guide[].icon(props)` 三个宿主调用面逐个钉住。
+- **教训**：客户端半边**不只有组件会被宿主调用**。凡是交给宿主的回调（title、icon、
+  canOpen、patterns…）都必须在**没有 React 上下文**的情况下也不抛——一个插件不该有能力
+  让用户的整个侧栏变空。
+
 ## #1（已修，0.4.1）audit_report 缺省 out 落到 profile 目录，而非会话工作区
 
 - **现象**：不传 `out` 调 `audit_report`，报告出现在

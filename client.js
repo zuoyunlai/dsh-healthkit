@@ -139,8 +139,7 @@ window.__ModuleLoader__.load({
     // （只有 getLocale / getSnapshot / subscribe / setLocale / addLanguage / register / bind），
     // 于是 typeof 检查永远为假、恒回退中文：切到英文宿主，侧栏标签仍是「体检」。
     // 另外回退方向也改对：DSH 的语言回退链终止于英文，所以「非中文也非英文」应回退 en 而不是 zh。
-    function pickLocale(ctx) {
-      try {
+    function pickLocale(ctx) {      try {
         const loc = ctx && typeof ctx.get === 'function' ? ctx.get('locale') : null;
         if (!loc) return I18N.zh;
         let id = '';
@@ -992,11 +991,30 @@ window.__ModuleLoader__.load({
               return;
             }
             const disposers = [];
+            // P0（0.13.1，DSH 0.2.2-rc.5 暴露）：原来这里写 `return lang.title`，而
+            // `lang` 在 apply() 作用域里**根本不存在**（它只在组件里由 useLang 造出来）。
+            // 从 0.5.3 起这行一直是错的，但旧宿主要么不调用 title()、要么把异常吞了，
+            // 所以一直是潜伏 bug。rc.5 的引导页会在渲染侧栏时逐个调 title() →
+            // 一次 ReferenceError 就把整个「引导页 + 标签条」渲染炸掉，表现为**右栏整块空**，
+            // 连别的插件的标签一起消失。
+            //
+            // 两条修正：
+            //   ① 用非 Hook 的 pickLocale(ctx)（title 是纯函数调用，不能跑 hooks）；
+            //   ② 再包一层 try：**任何 title 异常都不许冒到宿主**——一个插件不该有能力
+            //      让用户的整个侧栏变空。
+            const titleText = function () {
+              try {
+                const dict = pickLocale(ctx) || I18N.zh;
+                return String(dict.title || I18N.zh.title);
+              } catch (e) {
+                return I18N.zh.title;
+              }
+            };
             try {
               disposers.push(tabs.register({
                 id: IMPL_ID, kind: KIND, keepMounted: true, priority: 'extension',
-                title: function () { return lang.title; },
-                guide: [{ id: KIND, order: 70, title: function () { return lang.title; }, icon: HealthkitIcon }],
+                title: titleText,
+                guide: [{ id: KIND, order: 70, title: titleText, icon: HealthkitIcon }],
               }));
             } catch (e) {
               try { console.warn(TAG, '注册 tab 类型失败：', (e && e.message) || e); } catch (e2) { /* ignore */ }
