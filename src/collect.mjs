@@ -11,6 +11,16 @@ export function collect(ctxOpts) {
   var facts = { home: home, collectedAt: new Date().toISOString(), yamlAvailable: !!yaml, profiles: [], profileErrors: [], patchEntries: {}, exclusions: {}, costTracker: null, disk: [], engineAssets: [], logs: {}, vcs: false, machines: null };
 
   var profNames = listDirs(path.join(home, 'profiles'));
+  // 同一个包的 package.json 在一次采集里最多被读 3 次（installed / R23 / R1 判定）。
+  // 2026-11-20 审计 P2 的性能项：加一层 per-collect memo，减少同步 stat/read。
+  var pkgMemo = Object.create(null);
+  function readPkg(p) {
+    if (Object.prototype.hasOwnProperty.call(pkgMemo, p)) return pkgMemo[p];
+    var j = readJson(p, null);
+    pkgMemo[p] = j;
+    return j;
+  }
+
   for (var i = 0; i < profNames.length; i++) {
     var name = profNames[i];
     var dir = path.join(home, 'profiles', name);
@@ -40,6 +50,10 @@ export function collect(ctxOpts) {
     if (rawBundles !== undefined && !Array.isArray(rawBundles)) {
       facts.profileErrors.push({ name: name, dir: dir, reason: 'bundle-shape' });
     }
+    // 2026-11-20 审计 P2：单个 profile 里的任何形状/IO 异常，旧代码会抛穿整个 collect，
+    // 21 个工具与面板一起挂——恰恰在用户最需要诊断能力的时候。这里改成逐 profile 兜底：
+    // 出错记一条 profileError（报告里会明说「这个 profile 没体检」），其余 profile 照常。
+    try {
     var deps = Object.keys(pkg.dependencies || {});
     var depSpecs = pkg.dependencies || {};
     var third = bundles.filter(function (b) { return b.indexOf('@deepseek-ai/') !== 0; });
@@ -80,7 +94,7 @@ export function collect(ctxOpts) {
     if (parseError) facts.patchEntries[name] = { error: parseError };
     var installed = {};
     for (var k = 0; k < deps.length; k++) {
-      var ver = readJson(path.join(dir, 'node_modules', deps[k], 'package.json'), null);
+      var ver = readPkg(path.join(dir, 'node_modules', deps[k], 'package.json'));
       installed[deps[k]] = ver ? ver.version : null;
     }
     var wsPath = path.join(dir, 'pnpm-workspace.yaml');
@@ -94,7 +108,7 @@ export function collect(ctxOpts) {
     for (var xe = 0; xe < (Array.isArray(excl) ? excl.length : 0); xe++) {
       var xm = String(excl[xe]).match(/^(@?[^@]+)@(.+)$/);
       if (!xm) continue;
-      var xv = readJson(path.join(dir, 'node_modules', xm[1], 'package.json'), null);
+      var xv = readPkg(path.join(dir, 'node_modules', xm[1], 'package.json'));
       installedExclusions[xm[1]] = xv ? xv.version : null;
     }
     // file:/link: 依赖的目标是否存在——**在采集阶段判定**（涉及真实文件系统，
@@ -114,14 +128,14 @@ export function collect(ctxOpts) {
     // R23 判据（审计反哺 V07）：bundle 是否声明 dsh.bundle——文件系统的事在采集层做完，
     // 规则层只读事实。可读但缺 dsh.bundle 的才算；读不到的（未安装）不算，与原语义一致。
     var noManifest = third.filter(function (b) {
-      var pj = readJson(path.join(dir, 'node_modules', b, 'package.json'), null);
+      var pj = readPkg(path.join(dir, 'node_modules', b, 'package.json'));
       return !!(pj && !(pj.dsh && pj.dsh.bundle));
     });
     facts.profiles.push({
       name: name, dir: dir, deps: deps, bundles: bundles, thirdPartyBundles: third, noManifestBundles: noManifest,
       bundlesMissingFromDeps: missing,
       depsNotBundled: notBundledRaw.filter(function (d) {
-        var j = readJson(path.join(dir, 'node_modules', d, 'package.json'), null);
+        var j = readPkg(path.join(dir, 'node_modules', d, 'package.json'));
         return !!(j && (j.dsh || /dsh-/i.test(j.name || d)));
       }),
       depsNotBundledRaw: notBundledRaw, installed: installed, depSpecs: depSpecs, localDeps: localDeps, installedExclusions: installedExclusions,
@@ -129,6 +143,12 @@ export function collect(ctxOpts) {
       bakFiles: listFiles(dir).filter(function (f) { return /[.]bak/.test(f); }),
       patchBytes: patchText ? patchText.length : 0
     });
+    } catch (eCollect) {
+      facts.profileErrors.push({
+        name: name, dir: dir, reason: 'collect-error',
+        detail: String((eCollect && eCollect.message) || eCollect).slice(0, 200),
+      });
+    }
   }
 
   facts.vcs = exists(path.join(home, 'profiles', '.git'));

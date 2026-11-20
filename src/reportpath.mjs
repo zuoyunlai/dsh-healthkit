@@ -14,11 +14,16 @@
 import path from 'node:path';
 import os from 'node:os';
 import { dataDir } from './paths.mjs';
+import { dshHome as utilDshHome } from './util.mjs';
 
+// 2026-11-20 审计 P3：这里原来有一份独立的默认路径实现（util.mjs 也有一份），
+// 两处迟早分叉。默认值统一走 util，env 覆写仍保留（测试要用显式 env）。
 export function dshHome(env) {
-  const e = env || process.env;
-  if (e && typeof e.DSH_HOME === 'string' && e.DSH_HOME) return e.DSH_HOME;
-  return path.join(os.homedir(), '.dsh');
+  if (env) {
+    if (typeof env.DSH_HOME === 'string' && env.DSH_HOME) return env.DSH_HOME;
+    return path.join(os.homedir(), '.dsh');
+  }
+  return utilDshHome();
 }
 
 export function localDate(now) {

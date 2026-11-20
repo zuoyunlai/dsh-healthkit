@@ -19,7 +19,12 @@
   缓存键并入 `bundleIndex` 等影响 facts 形状的 opts；`audit_verify` 不再落盘覆盖开机验回；
   验回对 YAML 缺口下的 patch 类目标记 `unverifiable`；UNKNOWN 不再计入维度条数封顶；门禁基线并入已退役指纹。
 - **文档/口径**：CLI `--older-than` 真正生效；清理预览不再硬写「machines.json 里仍有该机器」；
-  `docs/MATRIX.md` 重新生成（39 条）；新增 `test/audit-fixes.mjs`（8 组回归：指纹/遮蔽/形状/中文路径/写面/验回）。
+  `docs/MATRIX.md` 重新生成（39 条）；新增 `test/audit-fixes.mjs`（11 组回归：指纹/遮蔽/形状/中文路径/写面/验回/护栏/隔离/dshHome）。
+- **第二批（同日续修）**：采集改逐 profile 兜底（单个 profile 的异常不再让 21 个工具全挂，
+  记 `collect-error` 并继续）；`clean` 护栏改为**按相对 home 的段**判定（DSH_HOME 自带 `data`/`credentials`
+  时不再把每次清理/还原全部拒掉）；面板 `cleanScan` 按 55s 复用（常开面板不再每轮重扫）；
+  同一次采集内的 `node_modules/*/package.json` 读取加 memo；`reportpath` 与 `util` 的 `dshHome` 收敛到一处；
+  R17/R18/R6 补 `target`（「位置」列不再为空）。
 
 ## 0.14.0 — 2026-11-20
 

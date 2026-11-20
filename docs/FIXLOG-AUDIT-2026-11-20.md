@@ -53,7 +53,7 @@
 
 ## 四、落地记录（0.14.1，本地提交）
 
-十项全部落地，`npm test` **45 组全绿**（含新回归；本次沙箱为完整权限，`clean-symlink` 也通过）。
+十四项全部落地（正文十项 + 续修四项），`npm test` **45 组全绿**（含新回归；本次沙箱为完整权限，`clean-symlink` 也通过）。
 
 | # | 改动 | 断言/实测 |
 |---|---|---|
@@ -68,11 +68,19 @@
 | 9 | `src/clean.mjs` 护栏改按相对 home 判定（home 含 `data` 不再全拒）；`prune` keep 夹 `[1,100]`；`recover` 排除 `auto-before-rollback:` | ⑥：keep=-1 只剩 1 份（此前删空） |
 | 10 | README（tool 数/路由数/verified 表述）、`src/toolface.mjs` 与 `src/cache.mjs` 注释、`docs/MATRIX.md` 重生成（39 条） | `test/docs-drift.mjs`、`test/matrix.mjs` 通过 |
 
+### 续修第二批（同日）
+
+| # | 改动 | 断言/实测 |
+|---|---|---|
+| 11 | `src/collect.mjs`：profile 体包 try/catch，异常记 `collect-error` 并继续；`node_modules/*/package.json` 读取加 per-collect memo | ⑩：坏形状 profile 之后，正常 profile 仍被采集 |
+| 12 | `src/clean.mjs`：`forbidden()` 先转相对 home 的段再判；`src/reportpath.mjs` 的 `dshHome` 收敛到 `util` | ⑨：home 含 `data` 时普通缓存不再被拦、受保护段仍拦；⑪：两份 `dshHome` 默认值一致 |
+| 13 | `src/panel.mjs`：`cleanScanMemo`（55s 复用） | `test/panel.mjs` 通过；常开面板不再每轮全盘重扫 |
+| 14 | `src/rules.mjs`：R17/R18/R6 补 `target` | findings/plan 的「位置」列不再恒空 |
+
 **明确没做的**：
 
-- **逐 profile try/catch 兜底**：只加固了审计点名的那几处形状（bundles、patch、modelPolicies）。任意字段坏掉仍可能让整次采集抛错——这是结构性改动（要把采集循环拆成可失败单元），留作下一批。
-- **性能**：全量采集仍是同步阻塞；面板每 55s 的 `cleanScan` 未缓存。属设计取舍，未在本批动。
-- **`target` 语义**：已透传并有 profile 兜底，但多数规则仍没填「具体对象」，位置列会显示 profile 名。
+- **全量采集改异步/worker**：仍是同步阻塞，只做了读放大与面板重扫的削减；改成异步要动宿主工具执行模型，风险不成比例。
+- **`target` 全覆盖**：只补了三个最容易「指错地方」的规则；其余规则靠 profile 兜底。
 - **R25 定为 P1 而非 P0**：`audit_boot` 才是「起不来」的权威判定；评分面用 P0 会造成分数悬崖，先用 P1 + 修法。
 
 **提交状态**：版本 `0.14.1`，本地提交，**不推送**（未发版）。

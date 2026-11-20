@@ -114,5 +114,36 @@ const facts = (profiles, patchEntries) => ({
   fs.rmSync(h3, { recursive: true, force: true });
 }
 
+// ⑨ 护栏按相对段判定：home 自身含 data 不再误杀，受保护段仍要拦
+{
+  const { forbidden } = await import('file:///' + root + '/src/clean.mjs');
+  const prev = process.env.DSH_HOME;
+  const h4 = path.join(home, 'data', 'dsh');
+  process.env.DSH_HOME = h4;
+  assert.equal(forbidden(path.join(h4, 'cache', 'x')), null, 'home 含 data 时普通缓存不该被护栏拦');
+  assert.ok(forbidden(path.join(h4, 'profiles', 'p', 'node_modules', 'x')), '受保护段仍要拦');
+  process.env.DSH_HOME = prev;
+}
+
+// ⑩ 坏 profile 不得拖垮其它 profile 的采集
+{
+  const { collect } = await import('file:///' + root + '/src/collect.mjs');
+  const p2 = path.join(home, 'profiles', 'p2');
+  fs.mkdirSync(p2, { recursive: true });
+  fs.writeFileSync(path.join(p2, 'package.json'), JSON.stringify({ name: 'p2', dependencies: {} }));
+  const f = collect({});
+  const names = f.profiles.map((x) => x.name);
+  assert.ok(names.includes('p2'), '坏形状 profile 之后，正常 profile 仍必须被采集，实得 ' + JSON.stringify(names));
+  assert.ok(f.profileErrors.some((e) => e.reason === 'bundle-shape'), '坏 profile 要留 profileError');
+}
+
+// ⑪ dshHome 两份实现不得分叉
+{
+  const rp = await import('file:///' + root + '/src/reportpath.mjs');
+  const ut = await import('file:///' + root + '/src/util.mjs');
+  assert.equal(rp.dshHome(), ut.dshHome(), 'reportpath 与 util 的默认 DSH_HOME 必须一致');
+  assert.equal(rp.dshHome({ DSH_HOME: '/tmp/x' }), '/tmp/x', '显式 env 仍要生效');
+}
+
 fs.rmSync(home, { recursive: true, force: true });
-console.log('audit-fixes: 通过（指纹/遮蔽/形状/中文路径/写面/验回 8 组）');
+console.log('audit-fixes: 通过（指纹/遮蔽/形状/中文路径/写面/验回/护栏/隔离/dshHome 11 组）');

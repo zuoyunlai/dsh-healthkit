@@ -228,13 +228,13 @@ export function runRules(facts, allowlist) {
       // 产品审计 P3：以前这条只说「大」，不说「能不能动」，而面板的「可清理空间」只算安全档，
       // 两个面对同一批目录给出两套数字（R17 报 845MB，clean 报 48MB），用户会困惑。
       fixHint: '先跑 audit_clean preview 看它能回收多少：不在可清理分组里的（profiles / sessions / attachments / 运行时目录）是有意不提供清理的受保护面，需要人工判断而不是一键删。',
-      evidence: [facts.home + '/' + d.name],
+      evidence: [facts.home + '/' + d.name], target: d.name,
       measured: { mb: Math.round(d.bytes / 1048576), approx: !!d.truncated, oldestAgeDays: d.oldestAgeDays, dir: d.name,
                   verdict: asset ? 'ENGINE_ASSET_NO_RECLAIM' : (d.oldestAgeDays !== null && d.oldestAgeDays > 30 ? 'RECLAIM_CANDIDATE' : 'NO_DATA_OLD_ENOUGH') } }));
   });
   facts.engineAssets.forEach(function (a) {
     out.push(F({ ruleId: 'R18', dimension: 'disk', severity: 'INFO', title: '引擎资产（判为不可回收）：' + a.path.replace(facts.home, '~/.dsh'),
-      evidence: [a.path], measured: { hashSubdirs: a.hashSubdirs, marker: a.marker, dir: a.path } }));
+      evidence: [a.path], target: a.path, measured: { hashSubdirs: a.hashSubdirs, marker: a.marker, dir: a.path } }));
   });
 
   // ---- R8 / R10 / R12 / R13 / R16 ----
@@ -384,6 +384,7 @@ export function runRules(facts, allowlist) {
         title: '多 profile 的 providers 段已漂移',
         evidence: [facts.home + '/profiles'],
         measured: { profiles: providerBlocks.map(function (b) { return b.profile; }) },
+        target: providerBlocks.map(function (b) { return b.profile; }).join(','),
         fixHint: 'L2: 用 sync-providers.mjs --write 同步，或抽到 home 层' }));
     } else {
       out.push(F({ ruleId: 'R6', dimension: 'consistency', severity: 'INFO',

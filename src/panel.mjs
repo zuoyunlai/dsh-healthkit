@@ -117,6 +117,17 @@ function clip(v, max) {
   } catch (e) { return ''; }
 }
 
+// 2026-11-20 审计 P2：面板每 55s 重算时都会跑一次 cleanScan（对 _backup 逐项 walk，
+// 不受 facts 缓存保护）。结果是常开面板持续做同步 IO。这里按 55s 复用同一份扫描结果。
+let cleanMemo = { at: 0, home: '', data: null };
+function cleanScanMemo(home) {
+  const now = Date.now();
+  if (cleanMemo.data && cleanMemo.home === home && now - cleanMemo.at < 55000) return cleanMemo.data;
+  const s = cleanScan({});
+  cleanMemo = { at: now, home, data: s };
+  return s;
+}
+
 export function collectSummary() {
   const now = Date.now();
   if (cache.data && now - cache.at < CACHE_MS) return cache.data;
@@ -176,7 +187,7 @@ export function collectSummary() {
   // 清理：可回收多少、按什么分组
   let clean = null;
   try {
-    const s = cleanScan({});
+    const s = cleanScanMemo(String(r.facts.home || ''));
     clean = {
       bytes: s.totalBytes || 0,
       // P3：把「大目录但没进可清理档」单独列出来，与 R17 的数字能对上。

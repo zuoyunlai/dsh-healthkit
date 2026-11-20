@@ -52,7 +52,15 @@ function insideHome(p) {
 
 export function forbidden(p) {
   if (!p || typeof p !== 'string') return null;
-  for (let i = 0; i < FORBIDDEN.length; i++) if (FORBIDDEN[i].test(p)) return FORBIDDEN[i].toString();
+  // 2026-11-20 审计 P2：旧版对**绝对路径**做段匹配，于是 DSH_HOME 自己含 data/credentials
+  // （如 E:\data\dsh）时，每个候选都命中护栏：apply 全跳过、restore 全拒绝，还报「命中护栏」，
+  // 用户会以为是保护生效。现在 home 内的路径先转相对段再判，home 本身永远不动。
+  let target = p;
+  const home = path.resolve(dshHome());
+  const r = path.resolve(p);
+  if (r === home) return 'dsh-home';
+  if (r.indexOf(home + path.sep) === 0) target = path.relative(home, r);
+  for (let i = 0; i < FORBIDDEN.length; i++) if (FORBIDDEN[i].test(target)) return FORBIDDEN[i].toString();
   return null;
 }
 
