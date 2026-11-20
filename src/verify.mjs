@@ -56,7 +56,11 @@ export function writePending(result, opts) {
     const p2 = actionable.filter((f) => f.severity === 'P2').slice(0, 3);
     const targets = p0p1.concat(p2)
       .slice(0, 12)
-      .map((f) => ({ fp: f.fp, ruleId: f.ruleId, severity: f.severity, title: f.title || '', fixHint: f.fixHint }));
+      .map((f) => ({ fp: f.fp, ruleId: f.ruleId, severity: f.severity, title: f.title || '', fixHint: f.fixHint,
+        // 2026-11-20 反哺 P3：验回要能区分「修好了」与「已经查不到了」，
+        // 所以待验目标必须带上「在哪个 profile」「证据指向哪」。
+        profile: (f.measured && f.measured.profile) || null,
+        evidence: (f.evidence && f.evidence[0]) || null }));
     const rec = {
       at: new Date().toISOString(),
       score: result.score ? result.score.total : null,
@@ -103,15 +107,28 @@ export function evaluatePending(result, opts) {
   const fixed = [];
   const stillThere = [];
   const muted = [];
+  // 2026-11-20 反哺 P3：「不出现」有三种原因，不能都记成修好。
+  //   fixed        —— 对象仍在被检查，判据明确不再命中
+  //   unverifiable —— 对应 profile 本次读不出（体检覆盖不到，不能下结论）
+  //   notApplicable—— 证据对象已不存在（profile 被删/路径消失，已不适用）
+  const brokenProfiles = new Set(((result.facts && result.facts.profileErrors) || []).map((e) => e.name));
+  const liveProfiles = new Set(((result.facts && result.facts.profiles) || []).map((p) => p.name));
+  const unverifiable = [];
+  const notApplicable = [];
   for (const t of pending.targets) {
     let status;
     if (cur[t.fp]) status = 'stillThere';
     else if (retired[t.fp]) status = 'muted';
+    else if (t.profile && brokenProfiles.has(t.profile)) status = 'unverifiable';
+    else if (t.profile && liveProfiles.size && !liveProfiles.has(t.profile)) status = 'notApplicable';
+    else if (t.evidence && !fs.existsSync(t.evidence)) status = 'notApplicable';
     else status = 'fixed';
     const row = { fp: t.fp, ruleId: t.ruleId, severity: t.severity, title: t.title, status: status };
     checked.push(row);
     if (status === 'fixed') fixed.push(row);
     else if (status === 'muted') muted.push(row);
+    else if (status === 'unverifiable') unverifiable.push(row);
+    else if (status === 'notApplicable') notApplicable.push(row);
     else stillThere.push(row);
   }
 
@@ -136,9 +153,9 @@ export function evaluatePending(result, opts) {
     pendingAt: pending.at,
     pendingScore: pending.score,
     score: result.score ? result.score.total : null,
-    checked, fixed, stillThere, muted,
+    checked, fixed, stillThere, muted, unverifiable, notApplicable,
     regressions,
-    note: '只报告，不改配置：fixed=真修好，muted=被退役记档（不算修好），stillThere=还在，regressions=本次新冒出来的 P0/P1。',
+    note: '只报告，不改配置：fixed=对象仍在被检查且不再命中，muted=被退役记档（不算修好），stillThere=还在，unverifiable=对应 profile 本次读不出（不能下结论），notApplicable=证据对象已不存在，regressions=本次新冒出来的 P0/P1。',
   };
   return rec;
 }

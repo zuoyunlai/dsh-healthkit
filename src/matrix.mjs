@@ -26,6 +26,21 @@ export const BOOT_COVERED = {
 // 能被清理器接手产出动作的规则
 export const CLEAN_COVERED = { R4: '.bak/副本堆积', R17: '大目录', R18: '引擎资产（判为不可回收）' };
 
+// 2026-11-20 反哺 P2：《处置建议要分层》。
+// 用户要回答的是「现在需不需要动」，而不是「离满分还差几条」。这里把规则分成两组：
+//   fault   —— 能让插件加载失败 / 静默跳过 / 宿主起不来（必须处理）
+//   hygiene —— 清洁度、声明一致性、成本口径（可以保留现状，不要为了分数去改）
+// 判据刻意保守：只有当一条规则的失败会改变「能不能跑」时才进 fault。
+export const FAULT_RULES = {
+  R2c: '配置文件解析不出（本插件的能力缺口也在内）',
+  R14: '装载日志出现 stand-in module',
+  R14b: '装载日志出现 newly not running',
+  R22: 'file:/link: 依赖目标不存在',
+  R23: 'bundle 未声明 dsh.bundle（宿主静默跳过）',
+  R24: 'profile 未被体检（报告残缺）',
+};
+export function isFaultRule(ruleId) { return Object.prototype.hasOwnProperty.call(FAULT_RULES, ruleId); }
+
 function readRulesSource(root) {
   try { return fs.readFileSync(path.join(root, 'src', 'rules.mjs'), 'utf8'); } catch (e) { return ''; }
 }

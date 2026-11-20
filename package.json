@@ -1,6 +1,6 @@
 {
   "name": "dsh-healthkit",
-  "version": "0.13.2",
+  "version": "0.14.0",
   "type": "module",
   "license": "MIT",
   "repository": {
@@ -60,7 +60,7 @@
   ],
   "scripts": {
     "audit": "node ./bin/audit.mjs",
-    "test": "node ./test/rules-on-fixture.mjs && node ./test/invariants.mjs && node ./test/reportpath.mjs && node ./test/version-guard.mjs && node ./test/migrate-guard.mjs && node ./test/tools-shape.mjs && node ./test/panel.mjs && node ./test/apply-inject.mjs && node ./test/capability-map.mjs && node ./test/false-positive-zone.mjs && node ./test/degradation.mjs && node ./test/snapshot.mjs && node ./test/portability.mjs && node ./test/r22-local-deps.mjs && node ./test/verify.mjs && node ./test/report-json.mjs && node ./test/recommend.mjs && node ./test/clean-symlink.mjs && node ./test/clean-guard.mjs && node ./test/profile-errors.mjs && node ./test/score.mjs && node ./test/cache.mjs && node ./test/layering.mjs && node ./test/panel-contract.mjs && node ./test/digest.mjs && node ./test/feedback.mjs && node ./test/metrics.mjs && node ./test/gate.mjs && node ./test/locale-meta.mjs && node ./test/docs-drift.mjs && node ./test/clean-restore.mjs && node ./test/security-doc.mjs && node ./test/badge.mjs && node ./test/recovery.mjs && node ./test/disclose.mjs && node ./test/preflight.mjs && node ./test/matrix.mjs && node ./test/client-apply.mjs && node ./test/capability-claims.mjs && node ./test/degrade.mjs && node ./test/verrange.mjs"
+    "test": "node ./test/rules-on-fixture.mjs && node ./test/invariants.mjs && node ./test/reportpath.mjs && node ./test/version-guard.mjs && node ./test/migrate-guard.mjs && node ./test/tools-shape.mjs && node ./test/panel.mjs && node ./test/apply-inject.mjs && node ./test/capability-map.mjs && node ./test/false-positive-zone.mjs && node ./test/degradation.mjs && node ./test/snapshot.mjs && node ./test/portability.mjs && node ./test/r22-local-deps.mjs && node ./test/verify.mjs && node ./test/report-json.mjs && node ./test/recommend.mjs && node ./test/clean-symlink.mjs && node ./test/clean-guard.mjs && node ./test/profile-errors.mjs && node ./test/score.mjs && node ./test/cache.mjs && node ./test/layering.mjs && node ./test/panel-contract.mjs && node ./test/digest.mjs && node ./test/feedback.mjs && node ./test/metrics.mjs && node ./test/gate.mjs && node ./test/locale-meta.mjs && node ./test/docs-drift.mjs && node ./test/clean-restore.mjs && node ./test/security-doc.mjs && node ./test/badge.mjs && node ./test/recovery.mjs && node ./test/disclose.mjs && node ./test/preflight.mjs && node ./test/matrix.mjs && node ./test/client-apply.mjs && node ./test/capability-claims.mjs && node ./test/degrade.mjs && node ./test/verrange.mjs && node ./test/intent.mjs && node ./test/triage.mjs && node ./test/export.mjs"
   },
   "dsh": {
     "bundle": {

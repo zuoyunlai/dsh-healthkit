@@ -101,6 +101,10 @@ var USAGE = [
   '  dsh-healthkit --findings [--severity P1] [--limit N]',
   '  dsh-healthkit --explain <指纹或规则号>',
   '  dsh-healthkit --plan [--limit N]',
+  '  dsh-healthkit --triage <症状>       按症状路由（工具不见/起不来/装了没生效/吃 token/磁盘）',
+  '',
+  '求助材料：',
+  '  dsh-healthkit --export-bundle [--out 文件]  脱敏后的可粘贴材料（路径/用户名/密钥/邮箱）',
   '',
   '能力域矩阵：',
   '  dsh-healthkit --capabilities   20 个能力域有没有实现 + 三级补救阶梯（先在配置/内置找，最后才装插件）',
@@ -130,7 +134,7 @@ var USAGE = [
 if (has('help') || has('h')) { console.log(USAGE); process.exit(0); }
 
 // 解释型动作直接复用插件工具的实现，避免 CLI 与工具面两套文案漂移。
-if (has('findings') || has('explain') || has('plan')) {
+if (has('findings') || has('explain') || has('plan') || has('triage') || has('export-bundle')) {
   try {
     var mod2 = await import('../index.js');
     var built = {};
@@ -138,7 +142,14 @@ if (has('findings') || has('explain') || has('plan')) {
     var res2 = null;
     if (has('plan')) res2 = await built.audit_plan.execute({ limit: Number(arg('limit', '5')) });
     else if (has('explain')) res2 = await built.audit_explain.execute({ finding: arg('explain', '') });
+    else if (has('triage')) res2 = await built.audit_triage.execute({ symptom: arg('triage', '') });
+    else if (has('export-bundle')) res2 = await built.audit_export.execute({});
     else res2 = await built.audit_findings.execute({ severity: arg('severity', 'all'), limit: Number(arg('limit', '20')) });
+    // 导出可以显式落盘（--out）；不传就只打印，绝不默认写文件。
+    if (has('export-bundle') && has('out')) {
+      var outF = arg('out', '');
+      if (outF) { await import('node:fs').then(function (fsm) { fsm.writeFileSync(outF, res2.markdown || '', 'utf8'); }); console.log('已写入 ' + outF + '（' + (res2.bytes || 0) + ' 字节，脱敏：' + (res2.redactions || '-') + '）'); process.exit(0); }
+    }
     if (has('json')) console.log(JSON.stringify(res2, null, 2));
     else console.log(res2.summary);
     process.exit(res2 && res2.found === false ? 2 : 0);

@@ -1,7 +1,7 @@
 import path from 'node:path';
 import fs from 'node:fs';
 import { collect } from './collect.mjs';
-import { cachedCollect } from './cache.mjs';
+import { cachedCollect, wasCached } from './cache.mjs';
 import { runRules } from './rules.mjs';
 import { drain, renderDegradations } from './degrade.mjs';
 import { score } from './score.mjs';
@@ -18,6 +18,7 @@ export function saveRetirements(home, store) {
 }
 
 import { attribution, validateRubric } from './score.mjs';
+import { needsActionLine } from './digest.mjs';
 import { latestRun, diffRuns } from './snapshot.mjs';
 
 // 账本行数：self 段用。读不到就返回 null（不抛，体检器自己出问题不该影响体检结论）。
@@ -44,6 +45,9 @@ export function audit(opts) {
   var facts = cachedCollect(Object.assign({}, opts || {}, {
     engineAssetMarkers: Array.isArray(allowlist.engineAssetMarkers) ? allowlist.engineAssetMarkers : null,
   }));
+  // 2026-11-20 反哺 P4：结论必须带「什么时候采的、是不是现采」。
+  facts.collectedAt = facts.collectedAt || new Date().toISOString();
+  facts.cacheHit = wasCached();
   var findings = runRules(facts, allowlist);
   var store = opts.skipRetire ? {} : loadRetirements(facts.home);
   var kept = [], retired = [];
@@ -95,8 +99,10 @@ export function audit(opts) {
       });
     }
   } catch (e) { runDiff = null; }
-  var report = renderReport(facts, kept, sc, { retired: retired, attr: attr, version: pkgVersion, self: self, diff: runDiff });
+  var firstScreen = needsActionLine({ findings: kept, attribution: attr, facts: facts });
+  var report = renderReport(facts, kept, sc, { retired: retired, attr: attr, version: pkgVersion, self: self, diff: runDiff, firstScreen: firstScreen });
   // P2-4：把本次采集期间记下的降级取出来（并清空，避免下次重复）。
   var degradations = drain();
-  return { facts: facts, findings: kept, retired: retired, allFindings: findings, score: sc, attribution: attr, report: report, self: self, rubricVersion: sc.rubricVersion, degradations: degradations };
+  return { facts: facts, findings: kept, retired: retired, allFindings: findings, score: sc, attribution: attr, report: report, self: self,
+           firstScreen: firstScreen, rubricVersion: sc.rubricVersion, degradations: degradations };
 }

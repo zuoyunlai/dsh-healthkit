@@ -46,6 +46,35 @@ export function countBySeverity(findings) {
 
 // 首屏那几行（CLI / 工具 render 共用）。
 // 参数：result = engine.audit() 的返回值；opts.limit 控制「最值得动」的条数。
+// 2026-11-20 反哺 P2：首屏先回答「现在需不需要动」。
+// 判据只看「会不会影响加载/启动」：P0、fault 组计分项、profile 读不出。
+// 清洁度/声明一致性/成本口径不进这句话——它们可以保留现状。
+export function needsActionLine(result) {
+  const findings = (result && result.findings) || [];
+  const at = (result && result.attribution) || {};
+  const capP0 = findings.filter((f) => f.severity === 'P0' && f.advisory !== true);
+  const faults = (at.rowsFault || []).filter((r) => r.severity !== 'INFO');
+  const broken = ((((result || {}).facts || {}).profileErrors) || []).length;
+  const intent = findings.filter((f) => f.ruleId === 'R1b');
+  const intentCount = intent.reduce((n, f) => n + ((f.measured && f.measured.count) || 0), 0);
+  const unknown = findings.filter((f) => f.confidence === 'UNKNOWN').length;
+
+  if (capP0.length || faults.length || broken) {
+    const parts = [];
+    if (capP0.length) parts.push('P0 ' + capP0.length + ' 条');
+    if (faults.length) parts.push('影响加载 ' + faults.length + ' 条');
+    if (broken) parts.push('profile 读不出 ' + broken + ' 个（报告残缺）');
+    let s = '**需要处理**：' + parts.join(' · ') + '。';
+    if (intentCount) s += '另有 ' + intentCount + ' 个插件按你的停用选择未挂载，不计为故障。';
+    return { needAction: true, text: s };
+  }
+  let s = '**不需要处理**：没发现会影响插件加载/启动的计分项。';
+  if (intentCount) s += '有 ' + intentCount + ' 个插件按你的停用选择未挂载，符合预期。';
+  s += '没到满分不等于必须改——清洁度与声明一致性属于「可保留现状」。';
+  if (unknown) s += '另有 ' + unknown + ' 条判不了的项，已在明细里标 UNKNOWN。';
+  return { needAction: false, text: s };
+}
+
 export function renderFirstScreen(result, opts) {
   const o = opts || {};
   const findings = (result && result.findings) || [];

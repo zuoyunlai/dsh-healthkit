@@ -4,9 +4,18 @@ export function renderReport(facts, findings, sc, opts) {
   var today = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
   L('# DSH 体检报告 ' + today);
   L('');
-  L('> 引擎 dsh-healthkit ' + (opts.version || '?') + ' · rubric ' + sc.rubricVersion + ' · 场景 ' + sc.scenario + ' · DSH_HOME ' + facts.home);
-  L('> 只读审计。修复建议均为 L3-plan（只给命令与预检，不执行）。');
+  L('> 引擎 dsh-healthkit ' + (opts.version || '?') + ' · rubric ' + sc.rubricVersion + ' · 场景 ' + sc.scenario);
+  L('> 被检实例：DSH_HOME = ' + facts.home + ((facts.profiles || []).length ? ' · profile ' + facts.profiles.map(function (p) { return p.name; }).join('、') : ''));
+  L('> 采集时间 ' + String(facts.collectedAt || '?').replace('T', ' ').slice(0, 19) + '（' + (facts.cacheHit ? '命中 60 秒事实缓存' : '本次现采') + '）');
+  L('> 范围：只读静态审计（profile 配置、装载日志、磁盘用量）。插件运行时的工具注册、宿主内部状态**不在本检查范围内**——这类只能标 UNKNOWN，不猜。');
+  L('> 修复建议均为 L3-plan（只给命令与预检，不执行）。');
   L('');
+  if (opts.firstScreen && opts.firstScreen.text) {
+    L('## 零、先看这一句');
+    L('');
+    L(opts.firstScreen.text);
+    L('');
+  }
   L('## 一、评分');
   L('');
   L('**总分 ' + sc.total + ' / 10**（' + sc.band + '）· 未加权原始分 ' + sc.raw + ' · 未关闭 P0 = ' + sc.p0Open);
@@ -115,28 +124,42 @@ export function renderReport(facts, findings, sc, opts) {
 export function attributionLines(sc, attr) {
   var out = [];
   if (!attr) return out;
+  var fault = attr.rowsFault || [];
+  var hygiene = attr.rowsHygiene || [];
   var hasRows = attr.rows && attr.rows.length;
   if (!hasRows && !attr.stage1) return out;
   var sign = function (n) { return n > 0 ? '+' + n : String(n); };
-  out.push('> 分两步：先解 P0 封顶，再在解封后的基准上逐条算。单条增量**互不叠加**（分维度上限仍会互相影响）；「全修完」才是加总真值。');
+  // 2026-11-20 反哺 P2：先回答「要不要动」，再谈分数。
+  out.push('> 先分清两类：**故障处置**（不修会让插件加载失败、被静默跳过或宿主起不来）与**配置优化**（可以保留现状）。分数是两类问题的合计量，不是待办清单。');
   out.push('');
   if (attr.stage1) {
-    out.push('**第一步 ｜ 处理掉全部 P0（' + attr.stage1.count + ' 条）** ' + attr.stage1.from + ' → ' + attr.stage1.to + '（' + sign(attr.stage1.delta) + (attr.capped ? '，解除封顶' : '') + '）');
+    out.push('**必须处理 ｜ P0（' + attr.stage1.count + ' 条）** ' + attr.stage1.from + ' → ' + attr.stage1.to + '（' + sign(attr.stage1.delta) + (attr.capped ? '，解除封顶' : '') + '）');
     out.push('');
     attr.stage1.items.forEach(function (s) { out.push('- ' + s); });
     out.push('');
   }
-  if (hasRows) {
-    out.push('**第二步 ｜ P0 清零后，再修这一条还能涨多少**（基准 ' + attr.stage2Base + '）');
+  if (fault.length) {
+    out.push('**故障处置 ｜ 按影响排（不是按涨分）**');
     out.push('');
-    out.push('| 增量 | 规则 | 问题 |');
+    out.push('| 影响 | 规则 | 问题 |');
     out.push('|---|---|---|');
-    attr.rows.slice(0, 8).forEach(function (r) {
-      out.push('| ' + sign(r.delta) + ' | ' + r.ruleId + ' | ' + (r.title || '') + (r.target ? '（' + r.target + '）' : '') + ' |');
+    fault.slice(0, 8).forEach(function (r) {
+      out.push('| ' + (r.saves || '影响加载') + ' | ' + r.ruleId + ' | ' + (r.title || '') + (r.target ? '（' + r.target + '）' : '') + ' |');
+    });
+    out.push('');
+  } else {
+    out.push('**故障处置**：没有会影响加载/启动的计分项。');
+    out.push('');
+  }
+  if (hygiene.length) {
+    out.push('**配置优化 ｜ 可保留现状**（不影响能不能加载；不建议为了分数动手）');
+    out.push('');
+    hygiene.slice(0, 8).forEach(function (r) {
+      out.push('- ' + (r.ruleId ? '`' + r.ruleId + '` ' : '') + (r.title || '') + (r.target ? '（' + r.target + '）' : ''));
     });
     out.push('');
   }
-  out.push('**全部计分项都修完** → ' + attr.potentialAll + ' / 10');
+  out.push('> 单条增量互不叠加，只用于比较优先级。**「全修完 → ' + attr.potentialAll + ' / 10」是评分公式的终点，不是建议动作**；不追求满分。');
   out.push('');
   return out;
 }

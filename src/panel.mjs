@@ -168,6 +168,9 @@ export function collectSummary() {
       target: x.target || '',
       delta: x.delta || 0,
     })),
+    // 2026-11-20：处置分层（不影响能不能加载的项不该催着改）
+    faultRows: (at.rowsFault || []).slice(0, 8).map((x) => ({ ruleId: x.ruleId, title: x.title || '', target: x.target || '', saves: x.saves || '' })),
+    hygieneRows: (at.rowsHygiene || []).slice(0, 8).map((x) => ({ ruleId: x.ruleId, title: x.title || '', target: x.target || '' })),
   };
 
   // 清理：可回收多少、按什么分组
@@ -464,22 +467,30 @@ export function pageHtml(data) {
       }).join('')
     : '<div class="dim">没有未解决的问题</div>';
 
-  // 修复顺序
+  // 处置顺序：先回答「要不要动」，再谈分数
   const planLines = [];
   if (d.plan.stage1) {
-    planLines.push('<li><b>第一步｜清掉 ' + d.plan.stage1.count + ' 条 P0</b>：' +
+    planLines.push('<li><b>必须处理｜P0 ' + d.plan.stage1.count + ' 条</b>：' +
       d.plan.stage1.from + ' → ' + d.plan.stage1.to + '（' + (d.plan.stage1.delta > 0 ? '+' : '') + d.plan.stage1.delta + (d.plan.capped ? '，解除封顶' : '') + '）' +
       (d.plan.stage1.items.length ? '<ul>' + d.plan.stage1.items.map(function (x) { return '<li>' + esc(x) + '</li>'; }).join('') + '</ul>' : '') + '</li>');
   } else {
-    planLines.push('<li><b>第一步</b>：没有 P0，不需要解封顶</li>');
+    planLines.push('<li><b>必须处理</b>：没有 P0，不需要解封顶</li>');
   }
-  if (d.plan.rows.length) {
-    planLines.push('<li><b>第二步｜以 ' + d.plan.base + ' 为基准，单条增量</b>（互不叠加）<ul>' +
-      d.plan.rows.map(function (r) {
-        return '<li>' + (r.delta > 0 ? '+' : '') + r.delta + ' · <b>' + esc(r.ruleId) + '</b> ' + esc(r.title) + (r.target ? '（' + esc(r.target) + '）' : '') + '</li>';
+  if (d.plan.faultRows.length) {
+    planLines.push('<li><b>故障处置｜影响加载/启动</b>（按影响排，不是按涨分）<ul>' +
+      d.plan.faultRows.map(function (r) {
+        return '<li><b>' + esc(r.ruleId) + '</b> ' + esc(r.title) + (r.target ? '（' + esc(r.target) + '）' : '') + (r.saves ? ' · ' + esc(r.saves) : '') + '</li>';
+      }).join('') + '</ul></li>');
+  } else {
+    planLines.push('<li><b>故障处置</b>：没有会影响加载/启动的计分项</li>');
+  }
+  if (d.plan.hygieneRows.length) {
+    planLines.push('<li><b>配置优化｜可保留现状</b>（不影响能不能加载，不建议为了分数动手）<ul>' +
+      d.plan.hygieneRows.map(function (r) {
+        return '<li><b>' + esc(r.ruleId) + '</b> ' + esc(r.title) + (r.target ? '（' + esc(r.target) + '）' : '') + '</li>';
       }).join('') + '</ul></li>');
   }
-  planLines.push('<li><b>全部修完</b> → ' + d.plan.potentialAll + ' / 10</li>');
+  planLines.push('<li class="dim">单条增量互不叠加；「全修完 → ' + d.plan.potentialAll + ' / 10」只是评分公式终点，不是建议动作。</li>');
 
   // 优化建议
   const advice = [];
@@ -519,9 +530,21 @@ export function pageHtml(data) {
       verifyRows.push('<li><b style="color:var(--bad)">! 回归（本次新冒出）</b> ' + esc(x.ruleId) + ' ' + esc(x.title) + '<div class="fp">' + esc(x.fp) + '</div></li>');
     });
   }
-  const verifyBlock = '<h2>上次修的，现在怎样了</h2><div class="card"><ul>' +
+  // 2026-11-20 反哺 P3：标题从「上次修的」改成「上次发现的变化」——
+  // 自动纳入待验清单的只是「带修法的发现」，不等于用户承诺修了。
+  // 另外补两态：无法复核（profile 读不出）与已不适用（对象不存在），
+  // 否则「不出现」会被一律当成修好。
+  if (v.hasPending) {
+    (v.unverifiable || []).forEach(function (x) {
+      verifyRows.push('<li><b style="color:var(--warn)">? 无法复核（对应 profile 本次读不出）</b> ' + esc(x.ruleId) + ' ' + esc(x.title) + '<div class="fp">' + esc(x.fp) + '</div></li>');
+    });
+    (v.notApplicable || []).forEach(function (x) {
+      verifyRows.push('<li><b>– 已不适用（证据对象已不存在）</b> ' + esc(x.ruleId) + ' ' + esc(x.title) + '<div class="fp">' + esc(x.fp) + '</div></li>');
+    });
+  }
+  const verifyBlock = '<h2>上次发现的变化，现在怎样了</h2><div class="card"><ul>' +
     (verifyRows.length ? verifyRows.join('') : '<li class="dim">' + esc(v.note || '没有待验清单（下次重启宿主会自动核对）。') + '</li>') +
-    '</ul><div class="dim" style="margin-top:6px">开机自动核对：修好了没、有没有把别的东西搞坏。**只报告，不改配置**。</div></div>';
+    '</ul><div class="dim" style="margin-top:6px">开机自动核对：还命中没、有没有把别的东西搞坏。<b>只报告，不改配置</b>；「不出现」只有在对象仍被检查时才算修好。</div></div>';
 
   // ③ 跨次时间线：每次体检相对上次的「新增 / 真修好 / 被静音」。
   const tl = d.timeline || [];

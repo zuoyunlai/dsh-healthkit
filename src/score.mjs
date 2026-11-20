@@ -105,6 +105,8 @@ function savesOf(f) {
 // 「修哪条、涨多少」：用同一套 rubric 做反事实重算，不另立公式。
 // 分两步：① 先解 P0 封顶（整组）；② 在解封后的基准上算每条 P1 的边际收益。
 // 为什么不混着算：总分被封顶时，单条 P1 的真实分数增量恒为 0，混着算会得到一列假 +0。
+import { isFaultRule } from './matrix.mjs';
+
 export function attribution(rubric, findings, sc) {
   var round = function (x) { return Math.round(x * 100) / 100; };
   var scoring = findings.filter(function (f) { return f.advisory !== true && f.severity !== 'INFO' && f.dimension; });
@@ -143,5 +145,11 @@ export function attribution(rubric, findings, sc) {
 
   var leftover = findings.filter(function (f) { return !(f.advisory !== true && f.severity !== 'INFO' && f.dimension); });
   var all = score(rubric, leftover, sc.scenario);
-  return { from: sc.total, capped: !!sc.capReason, stage1: stage1, stage2Base: base, rows: rows, potentialAll: all.total, potentialRaw: all.raw };
+  // 2026-11-20 反哺 P2：不只按「涨多少分」排，还要分清「不修会怎样」。
+  // fault = 影响加载/启动（必须处理）；hygiene = 清洁度与声明一致性（可以保留现状）。
+  var fault = [], hygiene = [];
+  rows.forEach(function (r) { (isFaultRule(r.ruleId) ? fault : hygiene).push(r); });
+  return { from: sc.total, capped: !!sc.capReason, stage1: stage1, stage2Base: base, rows: rows,
+           rowsFault: fault, rowsHygiene: hygiene,
+           potentialAll: all.total, potentialRaw: all.raw };
 }

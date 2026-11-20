@@ -39,6 +39,18 @@ export function collect(ctxOpts) {
     var third = bundles.filter(function (b) { return b.indexOf('@deepseek-ai/') !== 0; });
     var missing = third.filter(function (b) { return deps.indexOf(b) === -1; });
     var notBundledRaw = deps.filter(function (d) { return third.indexOf(d) === -1; });
+    // 2026-11-20 反哺 P1：市场/官方插件页的「停用」不改 dependencies，只把包从
+    // dsh.profile.bundles 里摘掉（dshmarket lib/profile.js removeProfileBundle 注释：
+    // "The package itself stays installed; enabling re-adds it"）。
+    // 因此「依赖在、bundle 不在」有两种含义：装坏了 / 用户主动停用。
+    // 停用记录在市场自己的 state.json 里，体检必须读它，否则会把用户意图判成 P1 并建议 remove。
+    var marketDisabled = [];
+    var marketStateReadable = false;
+    var marketState = readJson(path.join(dir, '.dsh-market', 'state.json'), null);
+    if (marketState && Array.isArray(marketState.disabled)) {
+      marketStateReadable = true;
+      marketDisabled = marketState.disabled.filter(function (x) { return typeof x === 'string' && x; });
+    }
     var patchPath = path.join(dir, 'cordis.patch.yml');
     var patchText = readText(patchPath);
     var entries = null, parseError = null;
@@ -93,6 +105,7 @@ export function collect(ctxOpts) {
         return !!(j && (j.dsh || /dsh-/i.test(j.name || d)));
       }),
       depsNotBundledRaw: notBundledRaw, installed: installed, depSpecs: depSpecs, localDeps: localDeps, installedExclusions: installedExclusions,
+      marketDisabled: marketDisabled, marketStateReadable: marketStateReadable,
       bakFiles: listFiles(dir).filter(function (f) { return /[.]bak/.test(f); }),
       patchBytes: patchText ? patchText.length : 0
     });

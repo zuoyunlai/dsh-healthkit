@@ -16,6 +16,8 @@ import { dshHome } from './util.mjs';
 export const TTL_MS = 60 * 1000;
 
 const store = new Map(); // home -> { at, fp, facts }
+// 2026-11-20：报告要说清「这份结论是现采的还是缓存的」，否则用户会以为刚改的配置已生效。
+let lastWasCached = false;
 
 function stamp(p) {
   try {
@@ -40,7 +42,14 @@ export function fingerprint(home) {
     profs = fs.readdirSync(path.join(h, 'profiles'), { withFileTypes: true })
       .filter((d) => d.isDirectory()).map((d) => d.name).sort();
   } catch (e) { profs = []; }
-  for (const p of profs) parts.push('p:' + p + '=' + stamp(path.join(h, 'profiles', p, 'package.json')));
+  for (const p of profs) {
+    parts.push('p:' + p + '=' + stamp(path.join(h, 'profiles', p, 'package.json')));
+    // 注释承诺过 profile 内的 cordis*.yml 也在指纹里，旧实现漏了它们：
+    // 只改已有 patch 文件时，60s 内会命中旧 facts（改完重跑看到旧结论）。
+    for (const f of ['cordis.patch.yml', 'cordis.patch.yaml', 'cordis.yml', path.join('.dsh-market', 'state.json')]) {
+      parts.push('p:' + p + '/' + f + '=' + stamp(path.join(h, 'profiles', p, f)));
+    }
+  }
   return parts.join('|');
 }
 
@@ -55,12 +64,15 @@ export function cachedCollect(opts) {
   if (o.fresh === true || disabled()) return collect(o);
   const now = Date.now();
   const hit = store.get(home);
-  if (hit && now - hit.at < TTL_MS && hit.fp === fingerprint(home)) return hit.facts;
+  if (hit && now - hit.at < TTL_MS && hit.fp === fingerprint(home)) { lastWasCached = true; return hit.facts; }
+  lastWasCached = false;
   const facts = collect(o);
   store.set(home, { at: now, fp: fingerprint(home), facts });
   if (store.size > 4) store.delete(store.keys().next().value);
   return facts;
 }
+
+export function wasCached() { return lastWasCached; }
 
 export function clearFactsCache(home) {
   if (home) store.delete(home);

@@ -38,27 +38,56 @@ export function runRules(facts, allowlist) {
   for (var i = 0; i < facts.profiles.length; i++) {
     var p = facts.profiles[i];
 
-    var realNotBundled = p.depsNotBundled.filter(function (d) { return !allow[d]; });
+    // 2026-11-20 反哺 P1：《停用 ≠ 该卸载》。
+    // 市场停用只把包从 bundles 摘掉、依赖留着（启用时再加回）。旧版一律判
+    // 「装了但未挂载」P1 并给 `dsh plugin remove`——照着修就把用户主动保留的插件删了，
+    // 重新启用还得重装。所以先按「用户停用」解释并降噪，剩下的才按未启用报。
+    var intent = {};
+    (Array.isArray(p.marketDisabled) ? p.marketDisabled : []).forEach(function (n) { intent[n] = 'market'; });
+    var realNotBundled = p.depsNotBundled.filter(function (d) { return !allow[d] && !intent[d]; });
+    var intentNotBundled = p.depsNotBundledRaw.filter(function (d) { return !allow[d] && !!intent[d]; });
+    if (intentNotBundled.length) out.push(F({ ruleId: 'R1b', dimension: 'consistency', severity: 'INFO',
+      title: '按你的停用选择未挂载 ' + intentNotBundled.length + ' 个（' + p.name + '）：符合预期',
+      evidence: [p.dir + '/package.json', p.dir + '/.dsh-market/state.json'],
+      measured: { count: intentNotBundled.length, packages: intentNotBundled, profile: p.name },
+      confidence: 'MEASURED',
+      fixHint: '不用改。停用但没卸载会继续占磁盘；要收回空间再卸载（重新启用需重装）。' }));
     if (realNotBundled.length) out.push(F({ ruleId: 'R1', dimension: 'consistency', severity: 'P1',
-      title: '装了但未挂载的依赖 ' + realNotBundled.length + ' 个（' + p.name + '）',
-      evidence: [p.dir + '/package.json'], measured: { count: realNotBundled.length, packages: realNotBundled },
-      fixHint: 'L3-plan: dsh plugin --profile ' + p.name + ' remove ' + realNotBundled.join(' ') }));
+      title: '装了但未启用 ' + realNotBundled.length + ' 个（' + p.name + '）',
+      evidence: [p.dir + '/package.json'], measured: { count: realNotBundled.length, packages: realNotBundled, profile: p.name },
+      // 市场停用记录读不到时，「未启用」可能包含未记录的主动停用 → 不许当成已证故障
+      confidence: p.marketStateReadable === true ? 'MEASURED' : 'MEDIUM',
+      fixHint: 'L3-plan: 先确认这些包是否还需要。需要 → 加回 dsh.profile.bundles；确认不再需要 → 再卸载（停用/移除后重新启用需重装）：' + realNotBundled.join(' ') }));
 
     var entries = facts.patchEntries[p.name];
     if (Array.isArray(entries)) {
       var coreIds = entries.filter(function (e) { return e.name && e.name.indexOf('@deepseek-ai/') === 0; }).map(function (e) { return e.id; });
       var disabledIds = entries.filter(function (e) { return e.disabled; }).map(function (e) { return e.id; });
+      // id ≠ npm 包名：只能按已知映射对账，对不上就保留「疑似」，不猜。
+      // 市场停用记录里的包（可能已卸载）会留下 disabled 条目——那是用户的开关记录，
+      // 删条目等于撤销记录，所以先摘出来，不进「疑似空转」。
+      var isIntentRecord = function (id) {
+        var tail = String(id || '').split('/').pop();
+        return (p.marketDisabled || []).some(function (n) { return n === id || String(n).split('/').pop() === tail; });
+      };
       var suspicious = disabledIds.filter(function (id) {
         if (coreIds.indexOf(id) !== -1) return false;
+        if (isIntentRecord(id)) return false;
         if (facts.bundleIndex) return !((facts.bundleIndex.idToBundles || {})[id]);
         if ((cfg.corePatchIds || []).indexOf(id) !== -1) return false;
         var guesses = [id, '@michengai/' + id, '@deepseek-ai/' + id];
         return guesses.every(function (g) { return !p.deps.includes(g); });
       });
+      var intentRecords = disabledIds.filter(isIntentRecord);
       if (suspicious.length) out.push(F({ ruleId: 'R2', dimension: 'consistency', severity: 'P2',
         title: 'disabled 指向的包不在依赖里（疑似空转） ' + suspicious.length + ' 条',
-        evidence: [p.dir + '/cordis.patch.yml'], measured: { suspicious: suspicious }, confidence: facts.bundleIndex ? 'MEASURED' : 'MEDIUM',
-        fixHint: '先用 --probe-all 确认该 id 是否存在于组合树，再删除条目（不要凭猜删）' }));
+        evidence: [p.dir + '/cordis.patch.yml'], measured: { suspicious: suspicious, profile: p.name },
+        confidence: facts.bundleIndex ? 'MEASURED' : 'MEDIUM',
+        fixHint: '先确认这些 id 是否真的不存在于组合树，再删条目（不要凭猜删）；如果它是你主动停用的记录，保留它，删了等于撤销记录' }));
+      if (intentRecords.length) out.push(F({ ruleId: 'R2b', dimension: 'consistency', severity: 'INFO',
+        title: 'disabled 条目对应你的停用记录 ' + intentRecords.length + ' 条（保留，不需处理）',
+        evidence: [p.dir + '/cordis.patch.yml', p.dir + '/.dsh-market/state.json'],
+        measured: { ids: intentRecords, profile: p.name }, confidence: 'MEASURED' }));
     } else if (entries && entries.error) {
       // 审计反哺 V01（docs/REVIEW-2026-11-16.md）：
       // 「体检器取不到 YAML 解析器」是体检器自己的能力缺口，不是用户配置坏了。

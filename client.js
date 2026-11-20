@@ -41,9 +41,10 @@ window.__ModuleLoader__.load({
         fixes: '修复收益（互不叠加）',
         dimsHead: '维度分', dimsHint: '权重 {w}%',
         lowest: '最低 {a}',
-        verifyTitle: '上次修的，现在怎样了',
+        verifyTitle: '上次发现的变化，现在怎样了',
         verifyFixed: '已修好', verifyStill: '还在', verifyMuted: '被静音（不算修好）', verifyRegress: '回归（本次新冒出）',
-        verifyHint: '开机自动核对：修好了没、有没有把别的东西搞坏。只报告，不改配置。',
+        verifyUnverifiable: '无法复核', verifyNotApplicable: '已不适用',
+        verifyHint: '开机自动核对：还是否命中、有没有把别的东西搞坏。只报告，不改配置；对象已不在检查范围时不算修好。',
         verifyNone: '没有待验清单（下次重启宿主会自动核对）。',
         timelineTitle: '最近几次的变化',
         timelineHint: '至少跑两次体检才有可比的变化（第一次是基线）。',
@@ -64,9 +65,10 @@ window.__ModuleLoader__.load({
         basedOn: 'baseline {v}', fixTiny: 'Every single fix is worth < 0.05 — no bars to draw',
         caps: 'Capabilities', noRedundant: 'No gaps',
         capsHint: 'Four-step ladder via audit_capabilities: config → provider → plugin → habit',
-        verifyTitle: 'What happened to last time',
+        verifyTitle: 'What changed since last time',
         verifyFixed: 'Fixed', verifyStill: 'Still there', verifyMuted: 'Muted (not fixed)', verifyRegress: 'Regressed',
-        verifyHint: 'Checked at boot: fixed? anything broken? Reports only, never edits.',
+        verifyUnverifiable: 'Unverifiable', verifyNotApplicable: 'Not applicable',
+        verifyHint: 'Checked at boot: still hit? anything broken? Reports only, never edits; gone from the checked scope does not count as fixed.',
         verifyNone: 'No pending list (the next host restart will check).',
         timelineTitle: 'Recent changes',
         timelineHint: 'Needs at least two runs to compare (the first is the baseline).',
@@ -846,6 +848,15 @@ window.__ModuleLoader__.load({
       (vf.muted || []).forEach(function (x, i) {
         vRows.push(h('div', { key: 'mu' + i, style: { fontSize: FS.body, margin: '3px 0', color: C.warn } },
           h('b', null, '~ ' + lang.verifyMuted + ' '), x.ruleId));
+      });
+      // 2026-11-20：不出现有两种「不是修好」的原因，必须分开显示。
+      (vf.unverifiable || []).forEach(function (x, i) {
+        vRows.push(h('div', { key: 'uv' + i, style: { fontSize: FS.body, margin: '3px 0', color: C.warn } },
+          h('b', null, '? ' + lang.verifyUnverifiable + ' '), x.ruleId + ' ', x.title));
+      });
+      (vf.notApplicable || []).forEach(function (x, i) {
+        vRows.push(h('div', { key: 'na' + i, style: { fontSize: FS.body, margin: '3px 0', color: C.dim } },
+          h('b', null, '– ' + lang.verifyNotApplicable + ' '), x.ruleId + ' ', x.title));
       });
       (vf.regressions || []).forEach(function (x, i) {
         vRows.push(h('div', { key: 'rg' + i, style: { fontSize: FS.body, margin: '3px 0', color: C.bad } },

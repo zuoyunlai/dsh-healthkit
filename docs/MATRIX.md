@@ -7,8 +7,10 @@
 
 | 规则 | 严重度 | 维度 | 抓什么 | 体检 | 探针 | 清理 | 门禁 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| `R1` | P1 | consistency | 装了但未挂载的依赖  | ✓ | ✓ | | ✓ |
+| `R1` | P1 | consistency | 装了但未启用  | ✓ | ✓ | | ✓ |
+| `R1b` | INFO | consistency | 按你的停用选择未挂载  | ✓ | | | |
 | `R2` | P2 | consistency | disabled 指向的包不在依赖里（疑似空转）  | ✓ | ✓ | | ✓ |
+| `R2b` | INFO | consistency | disabled 条目对应你的停用记录  | ✓ | | | |
 | `R2c` | P0（条件：P0 / P2） | consistency | 无法读取 patch（体检器缺 YAML 解析器，不代表配置有问题）（条件型，全文见源码） | ✓ | | | ✓ |
 | `R3` | P2 | consistency | 冷静期豁免打在未安装的包上  | ✓ | | | ✓ |
 | `R3b` | P2 | consistency | 豁免锁定的版本与实装不符  | ✓ | | | ✓ |

@@ -110,6 +110,8 @@ const VERIFY_SCHEMA = {
     fixed: { type: 'number' },
     stillThere: { type: 'number' },
     muted: { type: 'number' },
+    unverifiable: { type: 'number' },
+    notApplicable: { type: 'number' },
     regressions: { type: 'number' },
     timeline: { type: 'array', items: { type: 'string' } },
     summary: { type: 'string' },
@@ -752,7 +754,7 @@ export function buildTools(deps) {
   },
   {
     name: 'audit_plan',
-    description: '给出修复顺序：先解 P0 封顶，再按单条增量从大到小排。返回每步能涨多少分与全修完的终点（只读推演，不动配置）',
+    description: '给出处置顺序：先分「故障处置」（影响加载/启动，必须处理）与「配置优化」（可保留现状），再按影响而非涨分排。只读推演，不动配置',
     parameters: {
       type: 'object',
       properties: {
@@ -775,25 +777,120 @@ export function buildTools(deps) {
       const limit = Math.max(1, Math.min(12, typeof a.limit === 'number' ? a.limit : 5));
       const sign = (n) => (n > 0 ? '+' + n : String(n));
       const steps = [];
+      const fault = at.rowsFault || [];
+      const hygiene = at.rowsHygiene || [];
       if (at.stage1) {
-        steps.push('第一步｜清掉全部 ' + at.stage1.count + ' 条 P0：' + at.stage1.from + ' → ' + at.stage1.to + '（' + sign(at.stage1.delta) + (at.capped ? '，解除封顶' : '') + '）');
+        steps.push('必须处理｜P0 ' + at.stage1.count + ' 条：' + at.stage1.from + ' → ' + at.stage1.to + '（' + sign(at.stage1.delta) + (at.capped ? '，解除封顶' : '') + '）');
         (at.stage1.items || []).forEach((s) => steps.push('   · ' + s));
       } else {
-        steps.push('第一步｜没有 P0，不需要解封顶');
+        steps.push('必须处理｜没有 P0，不需要解封顶');
       }
-      if (at.rows && at.rows.length) {
-        steps.push('第二步｜以 ' + at.stage2Base + ' 为基准，单条增量（互不叠加）：');
-        at.rows.slice(0, limit).forEach((x) => {
-          steps.push('   · ' + sign(x.delta) + '  ' + x.ruleId + ' ' + (x.title || '') + (x.target ? '（' + x.target + '）' : ''));
+      if (fault.length) {
+        steps.push('故障处置｜影响加载/启动（按影响排，不是按涨分）：');
+        fault.slice(0, limit).forEach((x) => {
+          steps.push('   · ' + x.ruleId + ' ' + (x.title || '') + (x.target ? '（' + x.target + '）' : '') + (x.saves ? ' · ' + x.saves : ''));
         });
-        if (at.rows.length > limit) steps.push('   … 另有 ' + (at.rows.length - limit) + ' 条计分项');
+        if (fault.length > limit) steps.push('   … 另有 ' + (fault.length - limit) + ' 条故障项');
+      } else {
+        steps.push('故障处置｜没有会影响加载/启动的计分项');
       }
-      if (typeof at.potentialAll === 'number') steps.push('全部修完 → ' + at.potentialAll + ' / 10');
+      if (hygiene.length) {
+        steps.push('配置优化｜可保留现状，不建议为了分数动手：');
+        hygiene.slice(0, limit).forEach((x) => {
+          steps.push('   · ' + x.ruleId + ' ' + (x.title || '') + (x.target ? '（' + x.target + '）' : ''));
+        });
+        if (hygiene.length > limit) steps.push('   … 另有 ' + (hygiene.length - limit) + ' 条优化项');
+      }
+      steps.push('说明：单条增量互不叠加；「全修完 → ' + at.potentialAll + ' / 10」只是评分公式终点，不是建议动作。');
       return {
         base: typeof at.stage2Base === 'number' ? at.stage2Base : r.score.total,
         potentialAll: typeof at.potentialAll === 'number' ? at.potentialAll : r.score.total,
         steps,
         summary: '当前 ' + r.score.total + '/10。' + steps.join('\n'),
+      };
+    },
+  },
+  {
+    name: 'audit_triage',
+    description: '按症状进入诊断：把「升级后工具不见了 / 起不来 / 装了没生效 / 很吃 token / 磁盘越来越大」路由到对应规则与下一步命令。只做编排，不新增判定引擎；只读',
+    parameters: {
+      type: 'object',
+      properties: {
+        symptom: { type: 'string', description: '症状（自然语言）或 id：plugin-gone / boot-fail / not-loaded / context-heavy / disk' },
+        scenario: { type: 'string', description: 'general|code|design|writing，缺省 general' },
+      },
+      required: ['symptom'],
+      additionalProperties: false,
+    },
+    output: {
+      schema: {
+        type: 'object',
+        properties: {
+          known: { type: 'boolean' },
+          symptom: { type: 'string' },
+          label: { type: 'string' },
+          matched: { type: 'array', items: { type: 'string' } },
+          steps: { type: 'array', items: { type: 'string' } },
+          summary: { type: 'string' },
+        },
+        required: ['known', 'summary'],
+      },
+      render(_args, v) {
+        return text(v.summary);
+      },
+    },
+    execute: async (args) => {
+      const { audit } = await import('./engine.mjs');
+      const tr = await import('./triage.mjs');
+      const r = audit({ scenario: (args && args.scenario) || 'general' });
+      const t = tr.triage(r, { symptom: args && args.symptom });
+      return {
+        known: t.known,
+        symptom: t.symptom || '',
+        label: t.label || '',
+        matched: (t.matched || []).map((m) => '[' + m.severity + '] ' + m.ruleId + ' ' + m.title + '  ' + m.fp),
+        steps: t.steps || [],
+        summary: t.summary,
+      };
+    },
+  },
+  {
+    name: 'audit_export',
+    description: '生成一份可直接贴出去的脱敏求助材料：版本/采集时间/结论/故障处置/覆盖缺口/复现命令。路径、用户名、密钥、邮箱已脱敏；不写盘、不上传，也不打包整份配置',
+    parameters: {
+      type: 'object',
+      properties: {
+        scenario: { type: 'string', description: 'general|code|design|writing，缺省 general' },
+      },
+      additionalProperties: false,
+    },
+    output: {
+      schema: {
+        type: 'object',
+        properties: {
+          bytes: { type: 'number' },
+          redactions: { type: 'string' },
+          markdown: { type: 'string' },
+          summary: { type: 'string' },
+        },
+        required: ['bytes', 'markdown', 'summary'],
+      },
+      render(_args, v) {
+        return text(v.summary);
+      },
+    },
+    execute: async (args) => {
+      const { audit } = await import('./engine.mjs');
+      const ex = await import('./export.mjs');
+      const r = audit({ scenario: (args && args.scenario) || 'general' });
+      const b = ex.buildBundle(r, { version: r.self && r.self.version });
+      const c = b.redactions || {};
+      const red = '路径 ' + (c.home || 0) + ' / 用户名 ' + (c.user || 0) + ' / 密钥 ' + (c.key || 0) + ' / 邮箱 ' + (c.email || 0);
+      return {
+        bytes: b.bytes,
+        redactions: red,
+        markdown: b.markdown,
+        summary: '已生成脱敏求助材料（' + b.bytes + ' 字节）。脱敏计数：' + red + '。\n不含完整配置内容，也未上传；粘贴前请自己再过一眼。\n\n' + b.markdown,
       };
     },
   },
@@ -939,7 +1036,7 @@ export function buildTools(deps) {
   },
   {
     name: 'audit_verify',
-    description: '跨重启验回：上次体检留下的「待修清单」，这次修好了没、有没有把别的东西搞坏（回归）。只报告不修——fixed=真修好，muted=被静音不算修好，stillThere=还在，regressions=新冒出来的 P0/P1',
+    description: '跨重启验回：上次体检发现的变化，这次还命中没、有没有把别的东西搞坏（回归）。只报告不修——fixed=对象仍在被检查且不再命中，muted=被静音不算修好，stillThere=还在，unverifiable=对应 profile 本次读不出，notApplicable=证据对象已不存在，regressions=新冒出来的 P0/P1',
     parameters: {
       type: 'object',
       properties: {
@@ -969,7 +1066,7 @@ export function buildTools(deps) {
         L.push('没有待验清单。');
         L.push(v && v.note ? v.note : '（上次体检没有带修法的 P0/P1，或还没跑过体检。）');
       } else {
-        L.push('待验清单（来自 ' + String(v.pendingAt || '').replace('T', ' ').slice(0, 19) + '，分数 ' + v.pendingScore + ' → ' + v.score + '）');
+        L.push('上次发现的变化（来自 ' + String(v.pendingAt || '').replace('T', ' ').slice(0, 19) + '，分数 ' + v.pendingScore + ' → ' + v.score + '）');
         L.push('');
         L.push('真修好 ' + v.fixed.length + ' 条：');
         v.fixed.forEach((x) => L.push('  ✓ ' + x.ruleId + ' ' + x.title + '  ' + x.fp));
@@ -980,6 +1077,12 @@ export function buildTools(deps) {
         L.push('被静音（**不算修好**）' + v.muted.length + ' 条：');
         v.muted.forEach((x) => L.push('  ~ ' + x.ruleId + '  ' + x.fp));
         if (!v.muted.length) L.push('  （无）');
+        L.push('无法复核（对应 profile 本次读不出）' + (v.unverifiable || []).length + ' 条：');
+        (v.unverifiable || []).forEach((x) => L.push('  ? ' + x.ruleId + ' ' + x.title + '  ' + x.fp));
+        if (!(v.unverifiable || []).length) L.push('  （无）');
+        L.push('已不适用（证据对象已不存在）' + (v.notApplicable || []).length + ' 条：');
+        (v.notApplicable || []).forEach((x) => L.push('  – ' + x.ruleId + ' ' + x.title + '  ' + x.fp));
+        if (!(v.notApplicable || []).length) L.push('  （无）');
         if (v.regressions && v.regressions.length) {
           L.push('');
           L.push('**回归**（本次新冒出来的 P0/P1）' + v.regressions.length + ' 条：');
@@ -999,6 +1102,8 @@ export function buildTools(deps) {
         fixed: (v && v.fixed || []).length,
         stillThere: (v && v.stillThere || []).length,
         muted: (v && v.muted || []).length,
+        unverifiable: (v && v.unverifiable || []).length,
+        notApplicable: (v && v.notApplicable || []).length,
         regressions: (v && v.regressions || []).length,
         timeline: tl.map((t) => String(t.at).replace('T', ' ').slice(5, 19) + ' 分数 ' + t.score + ' +' + t.added + '/修' + t.fixed + '/静' + t.muted),
         summary: L.join('\n'),

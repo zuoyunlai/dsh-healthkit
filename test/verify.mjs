@@ -95,4 +95,34 @@ fs.rmSync(home, { recursive: true, force: true });
   assert.equal(only.targets.length, 1, '只有 P2 时也应给出待验目标');
 }
 
-console.log('verify: 通过（待验清单筛选 · fixed/muted/stillThere 三分 · 时间线）');
+
+// 1d) 2026-11-20 反哺 P3：「不出现」不只一种原因。
+// fixed 只该给「对象仍在被检查、判据不再命中」的那条；profile 读不出与对象不存在必须分开。
+{
+  const h3 = fs.mkdtempSync(path.join(os.tmpdir(), 'healthkit-verify3-'));
+  const withMeta = [
+    { fp: 'R24#web', ruleId: 'R24', severity: 'P0', dimension: 'consistency', title: 'profile 读不出', fixHint: '修 package.json', advisory: false, measured: { profile: 'web' }, evidence: [path.join(h3, 'profiles', 'web', 'package.json')] },
+    { fp: 'R1#old', ruleId: 'R1', severity: 'P1', dimension: 'consistency', title: '旧包的依赖未启用', fixHint: '确认是否还需要', advisory: false, measured: { profile: 'old' }, evidence: [path.join(h3, 'profiles', 'old', 'package.json')] },
+    { fp: 'R4#gone', ruleId: 'R4', severity: 'P2', dimension: 'disk', title: '目录已删', fixHint: '清理', advisory: false, evidence: [path.join(h3, 'no-such-dir')] },
+    { fp: 'R3#fine', ruleId: 'R3', severity: 'P1', dimension: 'consistency', title: '真修好的', fixHint: '重装', advisory: false },
+  ];
+  writePending({ score: { total: 8 }, findings: withMeta, retired: [] }, { home: h3 });
+  const res = {
+    score: { total: 9 },
+    findings: [],
+    retired: [],
+    facts: { profileErrors: [{ name: 'web', reason: 'parse-error' }], profiles: [{ name: 'desktop' }] },
+  };
+  const v = checkPending(res, { home: h3 });
+  assert.equal(v.unverifiable.length, 1, 'profile 读不出时该记「无法复核」，实得 ' + v.unverifiable.length);
+  assert.equal(v.unverifiable[0].fp, 'R24#web');
+  assert.equal(v.notApplicable.length, 2, 'profile 消失 / 证据不存在都该记「已不适用」，实得 ' + v.notApplicable.length);
+  assert.ok(v.notApplicable.some((x) => x.fp === 'R1#old'), 'profile 已不在被检列表 → 已不适用');
+  assert.ok(v.notApplicable.some((x) => x.fp === 'R4#gone'), '证据路径不存在 → 已不适用');
+  assert.equal(v.fixed.length, 1, '只有对象仍被检查的那条才算真修好');
+  assert.equal(v.fixed[0].fp, 'R3#fine');
+  assert.match(v.note, /unverifiable/, 'note 要写清新状态的含义');
+  fs.rmSync(h3, { recursive: true, force: true });
+}
+
+console.log('verify: 通过（待验清单筛选 · fixed/muted/stillThere/unverifiable/notApplicable 五分 · 时间线）');
