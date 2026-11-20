@@ -52,16 +52,20 @@
 
 **验证**：`npm test` 链上 44 组；本机执行时 `clean-symlink` 的前置条件失败——该用例要求 `symlinkSync(..., 'junction')` 后 `lstat` 报符号链接，而当前沙箱进程创建 junction 会落成真实目录（`mode 40666 / isDir true`），属执行环境限制，与本次改动无关（未触碰 `src/clean.mjs`）。其余 43 组全部通过，含新增的 `intent`/`triage`/`export` 与扩展后的 `verify`。
 
-**发版准备（2026-11-20）**：v0.14.0 前置已就绪——package.json 0.14.0、CHANGELOG 首段 0.14.0、44 组测试链（43 组本地绿 + clean-symlink 受沙箱 junction 限制）、docs/MATRIX.md 已重生成、registry 现有 latest = 0.13.2（gitHead = ee1136b，0.14.0 未发布）、main = origin/main = ee1136b。
+**发版结果（2026-11-20 20:34，v0.14.0 已发布）**：发布提交 `2e0194a` → 推 main（`ee1136b..2e0194a`）→ 打 tag `v0.14.0`（tag 对象 `47c8959`，指向 `2e0194a`）→ 推 tag。
 
-**发布动作未执行**：本会话沙箱禁止任何子进程写工作区（node --matrix --out docs/MATRIX.md 报 EPERM，只有文件工具能写），git commit 无法创建 .git/index.lock；两次 danger-full-access 审批请求均超时（约 2–4 分钟无应答）。待用户执行或批准下列命令后即进入 CI：
+四项互锁全部一致：
 
-    git add -A
-    git commit -m "chore(release): 0.14.0"
-    git push origin main
-    git tag -a v0.14.0 -m v0.14.0
-    git push origin v0.14.0
-**提交状态**：改动全部落在工作区并通过测试，但**本地 commit 未完成**——当前沙箱对仓库 `.git` 只读（`touch .git/.write-test` → Permission denied），一次 `danger-full-access` 审批请求超时。待批准后执行：`git add -A && git commit -m "feat(audit): 0.14.0 产品反哺批"`。**不推送**。
+| 项 | 实测 |
+|---|---|
+| CI | `ci` 44736770984 success（main）；`publish` 44736780370 success——publish 作业 19s、release 作业 6s，npm test 在 CI（ubuntu/node 22）通过，含 `clean-symlink` |
+| 资产一致性 | 本地 `npm pack` shasum `bf09ce6ddaae6a04d8d9cba534f2d764c78ca83e` = registry `dist.shasum`；integrity `sha512-M4GGzQnK…`、unpackedSize 909449、fileCount 98 三项也逐一相等 |
+| 提交身份 | registry `gitHead` = `2e0194a136443b67fe922d0d33062123cc36fe95` = tag 提交 |
+| 发布身份 | `_npmUser` = GitHub Actions + `trustedPublisher{id:github}`（OIDC，非长期 token）；`attestations` = SLSA provenance/v1 |
+| GitHub Release | `v0.14.0` 非 draft，正文 = CHANGELOG 首段（逐字比对仅差一个尾随空行） |
+| dist-tags | `latest = 0.14.0` |
+
+传播：tag 推送后首轮 3 次 404（约 1 分钟内），随后即 200——本次比历史 6–10 分钟快，未重推 tag、未改版本重发。
 
 **仍不做**：全目录插件 × 宿主版本矩阵、一键修复、自动上传——理由见 `docs/COMPLEMENTARY.md` 与产品定位定案。
 
