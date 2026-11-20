@@ -33,7 +33,13 @@ export function collect(ctxOpts) {
       }
       continue;
     }
-    var bundles = (pkg.dsh && pkg.dsh.profile && pkg.dsh.profile.bundles) || [];
+    // 2026-11-20 审计 P2：bundles 被写坏（对象数组、字符串、null）时，旧代码直接 .filter
+    // 抛 TypeError，整次采集失败 → 21 个工具全挂。坏形状按「没有」处理并留一条 profileError。
+    var rawBundles = (pkg.dsh && pkg.dsh.profile && pkg.dsh.profile.bundles);
+    var bundles = Array.isArray(rawBundles) ? rawBundles.filter(function (x) { return typeof x === 'string' && x; }) : [];
+    if (rawBundles !== undefined && !Array.isArray(rawBundles)) {
+      facts.profileErrors.push({ name: name, dir: dir, reason: 'bundle-shape' });
+    }
     var deps = Object.keys(pkg.dependencies || {});
     var depSpecs = pkg.dependencies || {};
     var third = bundles.filter(function (b) { return b.indexOf('@deepseek-ai/') !== 0; });
@@ -51,10 +57,24 @@ export function collect(ctxOpts) {
       marketStateReadable = true;
       marketDisabled = marketState.disabled.filter(function (x) { return typeof x === 'string' && x; });
     }
-    var patchPath = path.join(dir, 'cordis.patch.yml');
+    // 2026-11-20 审计 P1：恢复面认 .yml 与 .yaml，采集面只认 .yml——用 .yaml 的 profile
+    // 在体检里等于「没有 patch」，R7a/R8/R10/R12/R13/R2 全部静默不跑（安全假绿），
+    // 而 audit_boot 会说「patch 解析不了」。两边必须用同一份探测逻辑。
+    var patchFile = ['cordis.patch.yml', 'cordis.patch.yaml']
+      .map(function (f) { return { name: f, p: path.join(dir, f) }; })
+      .filter(function (x) { return exists(x.p); })[0] || { name: 'cordis.patch.yml', p: path.join(dir, 'cordis.patch.yml') };
+    var patchPath = patchFile.p;
     var patchText = readText(patchPath);
     var entries = null, parseError = null;
-    if (patchText && yaml) { try { entries = yaml.parse(patchText) || []; } catch (e) { parseError = String(e.message); } }
+    if (patchText && yaml) {
+      try {
+        var parsedPatch = yaml.parse(patchText);
+        // 补丁面必须是数组；解析出对象时旧代码 .map 崩溃，现在按「解析失败」如实报。
+        if (Array.isArray(parsedPatch)) entries = parsedPatch;
+        else if (parsedPatch === null || parsedPatch === undefined) entries = [];
+        else parseError = 'PATCH_NOT_ARRAY';
+      } catch (e) { parseError = String(e.message); }
+    }
     else if (patchText && !yaml) parseError = 'YAML_UNAVAILABLE';
     facts.patchEntries[name] = entries ? entries.map(function (e) { return { id: e.id, disabled: e.disabled === true, name: e.name || null, hasConfig: !!e.config, config: e.config || null }; }) : [];
     if (parseError) facts.patchEntries[name] = { error: parseError };
@@ -105,7 +125,7 @@ export function collect(ctxOpts) {
         return !!(j && (j.dsh || /dsh-/i.test(j.name || d)));
       }),
       depsNotBundledRaw: notBundledRaw, installed: installed, depSpecs: depSpecs, localDeps: localDeps, installedExclusions: installedExclusions,
-      marketDisabled: marketDisabled, marketStateReadable: marketStateReadable,
+      marketDisabled: marketDisabled, marketStateReadable: marketStateReadable, patchFile: patchFile.name,
       bakFiles: listFiles(dir).filter(function (f) { return /[.]bak/.test(f); }),
       patchBytes: patchText ? patchText.length : 0
     });

@@ -45,6 +45,7 @@
 | `R22` | P0 | reliability | file:/link: 依赖目标不存在  | ✓ | ✓ | | ✓ |
 | `R23` | P0 | reliability | bundle 未声明 dsh.bundle，宿主会静默跳过  | ✓ | ✓ | | ✓ |
 | `R24` | P0 | reliability | profile「 | ✓ | ✓ | | ✓ |
+| `R25` | P1 | reliability | 声明的 bundle 未安装或不在依赖里  | ✓ | | | ✓ |
 
 > 严重度按**最坏值**记：源码里写成 `yamlUnavailable ? 'P2' : 'P0'` 这种条件型，矩阵显示 `P0（条件：…）`。
 > 把 P0 记成 P2 会让「门禁」列跟着失真，所以宁可显示最坏值再标注条件。

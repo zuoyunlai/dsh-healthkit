@@ -512,7 +512,9 @@ if (has('clean-restore')) {
   process.exit(0);
 }
 if (has('clean-purge')) {
-  var purgeAge = Number(arg('clean-purge', '7'));
+  // 2026-11-20 审计 P2：文档写的是 --older-than N，实现只读位置参数，照文档执行会得 NaN→7。
+  // 两个都认；下界由 purge() 自己钉在 PURGE_AFTER_DAYS。
+  var purgeAge = Number(arg('older-than', arg('clean-purge', '7')));
   if (!Number.isFinite(purgeAge)) purgeAge = 7;
   var pres = cleanPurge({ olderThanDays: purgeAge, dryRun: has('dry-run') });
   console.log((pres.dryRun ? '[预演] 将永久删除 ' : '已永久删除 ') + (pres.dryRun ? pres.candidates.length : pres.purged.length) + ' 个批次，' + fmtBytes(pres.bytes));

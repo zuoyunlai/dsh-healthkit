@@ -4,13 +4,18 @@ function fpOf(o) {
   var m = o.measured || {};
   // 审计反哺 V03：退役只该静音它自己。多实例规则（R13 跨 profile、R17 跨目录、R22 跨 profile）
   // 必须在 measured 里带标识（profile/dir/dep），否则 fp 退化成裸规则号，退役一条会静音一串。
-  var tail = m.tag || m.dir || (m.packages && m.packages[0]) || (m.stale && m.stale[0] && m.stale[0].entry) || (m.dead && m.dead[0]) || (m.broken && m.broken[0] && m.broken[0].dep) || m.profile || '';
+  // 2026-11-20 审计 P2：profile 必须优先于 packages[0]。旧顺序让 R1 的 fp 变成
+  // 「第一个未启用包名」——用户删掉首包、其余仍在时 fp 变了，验回会把旧目标记成「真修好」。
+  var tail = m.tag || m.dir || m.profile || (m.packages && m.packages[0]) || (m.stale && m.stale[0] && m.stale[0].entry) || (m.dead && m.dead[0]) || (m.broken && m.broken[0] && m.broken[0].dep) || '';
   return o.ruleId + (tail ? '#' + String(tail).slice(0, 60) : '');
 }
 
 function F(o) {
   return { id: o.id, ruleId: o.ruleId, dimension: o.dimension, severity: o.severity, title: o.title,
     evidence: o.evidence || [], measured: o.measured || {}, confidence: o.confidence || 'MEASURED', advisory: o.advisory === true,
+    // 2026-11-20 审计 P2：F() 一直吞掉 target，而 toolface 的 findings/plan 都在读它，
+    // 于是「位置」列恒为空。没有显式 target 时用 profile 兜底。
+    target: o.target || ((o.measured && o.measured.profile) ? String(o.measured.profile) : ''),
     fixHint: o.fixHint || null, fp: o.fp || fpOf(o) };
 }
 export function runRules(facts, allowlist) {
@@ -24,12 +29,16 @@ export function runRules(facts, allowlist) {
     if (!Array.isArray(p.bundles)) p.bundles = [];
     if (!Array.isArray(p.thirdPartyBundles)) p.thirdPartyBundles = [];
     if (!Array.isArray(p.depsNotBundled)) p.depsNotBundled = [];
+    if (!Array.isArray(p.depsNotBundledRaw)) p.depsNotBundledRaw = [];
+    if (!Array.isArray(p.marketDisabled)) p.marketDisabled = [];
     if (!Array.isArray(p.bakFiles)) p.bakFiles = [];
     if (!Array.isArray(p.localDeps)) p.localDeps = [];
     if (!p.installed || typeof p.installed !== 'object') p.installed = {};
     if (!p.depSpecs || typeof p.depSpecs !== 'object') p.depSpecs = {};
   });
   if (!facts.logs || typeof facts.logs !== 'object') facts.logs = {};
+  if (!facts.patchEntries || typeof facts.patchEntries !== 'object') facts.patchEntries = {};
+  if (!facts.exclusions || typeof facts.exclusions !== 'object') facts.exclusions = {};
   if (!Array.isArray(facts.profileErrors)) facts.profileErrors = [];
   if (!Array.isArray(facts.disk)) facts.disk = [];
   if (!Array.isArray(facts.engineAssets)) facts.engineAssets = [];
@@ -59,6 +68,21 @@ export function runRules(facts, allowlist) {
       confidence: p.marketStateReadable === true ? 'MEASURED' : 'MEDIUM',
       fixHint: 'L3-plan: 先确认这些包是否还需要。需要 → 加回 dsh.profile.bundles；确认不再需要 → 再卸载（停用/移除后重新启用需重装）：' + realNotBundled.join(' ') }));
 
+    // 2026-11-20 审计 P1：声明了 bundle 但没装 / 不在 dependencies 时，宿主会**静默跳过**它。
+    // 这正是本插件「升级后插件还在不在跑」的核心卖点，评分面此前完全看不见（只有 audit_boot 报）；
+    // 采集层早就算好了 bundlesMissingFromDeps，却一直没人引用。
+    var missingBundles = Array.isArray(p.bundlesMissingFromDeps) ? p.bundlesMissingFromDeps : [];
+    var notInstalled = (p.thirdPartyBundles || []).filter(function (b) {
+      return (p.deps || []).indexOf(b) !== -1 && p.installed && p.installed[b] === null;
+    });
+    if (missingBundles.length || notInstalled.length) {
+      out.push(F({ ruleId: 'R25', dimension: 'reliability', severity: 'P1',
+        title: '声明的 bundle 未安装或不在依赖里 ' + (missingBundles.length + notInstalled.length) + ' 个（' + p.name + '）：宿主会静默跳过',
+        evidence: [p.dir + '/package.json'],
+        measured: { missingFromDeps: missingBundles, notInstalled: notInstalled, profile: p.name },
+        fixHint: 'L3-plan: 补装这些包（dsh plugin --profile ' + p.name + ' add <pkg>），或从 dsh.profile.bundles 删掉；在此之前它们不会加载' }));
+    }
+
     var entries = facts.patchEntries[p.name];
     if (Array.isArray(entries)) {
       var coreIds = entries.filter(function (e) { return e.name && e.name.indexOf('@deepseek-ai/') === 0; }).map(function (e) { return e.id; });
@@ -81,7 +105,7 @@ export function runRules(facts, allowlist) {
       var intentRecords = disabledIds.filter(isIntentRecord);
       if (suspicious.length) out.push(F({ ruleId: 'R2', dimension: 'consistency', severity: 'P2',
         title: 'disabled 指向的包不在依赖里（疑似空转） ' + suspicious.length + ' 条',
-        evidence: [p.dir + '/cordis.patch.yml'], measured: { suspicious: suspicious, profile: p.name },
+        evidence: [p.dir + '/' + (p.patchFile || 'cordis.patch.yml')], measured: { suspicious: suspicious, profile: p.name },
         confidence: facts.bundleIndex ? 'MEASURED' : 'MEDIUM',
         fixHint: '先确认这些 id 是否真的不存在于组合树，再删条目（不要凭猜删）；如果它是你主动停用的记录，保留它，删了等于撤销记录' }));
       if (intentRecords.length) out.push(F({ ruleId: 'R2b', dimension: 'consistency', severity: 'INFO',
@@ -97,7 +121,7 @@ export function runRules(facts, allowlist) {
       out.push(F({ ruleId: 'R2c', dimension: 'consistency',
         severity: yamlUnavailable ? 'P2' : 'P0',
         title: yamlUnavailable ? '无法读取 patch（体检器缺 YAML 解析器，不代表配置有问题）' : 'patch YAML 解析失败：' + entries.error,
-        evidence: [p.dir + '/cordis.patch.yml'],
+        evidence: [p.dir + '/' + (p.patchFile || 'cordis.patch.yml')],
         confidence: yamlUnavailable ? 'UNKNOWN' : 'MEASURED',
         fixHint: yamlUnavailable ? '这是体检器的取证缺口：给 profile 的依赖里补上 yaml（或用 --probe-all 走宿主通道），补上后此条自动消失' : null }));
     }
@@ -122,10 +146,10 @@ export function runRules(facts, allowlist) {
       });
       if (dead.length) out.push(F({ ruleId: 'R3', dimension: 'consistency', severity: 'P2',
         title: '冷静期豁免打在未安装的包上 ' + dead.length + ' 条', evidence: [p.dir + '/pnpm-workspace.yaml'],
-        measured: { dead: dead, total: excl.length }, fixHint: 'L2: 删除这些条目（零收益、纯风险）' }));
+        measured: { dead: dead, total: excl.length, profile: p.name }, fixHint: 'L2: 删除这些条目（零收益、纯风险）' }));
       if (stale.length) out.push(F({ ruleId: 'R3b', dimension: 'consistency', severity: 'P2',
         title: '豁免锁定的版本与实装不符 ' + stale.length + ' 条', evidence: [p.dir + '/pnpm-workspace.yaml'],
-        measured: { stale: stale }, fixHint: 'L2: 改成实装版本，或删除条目' }));
+        measured: { stale: stale, profile: p.name }, fixHint: 'L2: 改成实装版本，或删除条目' }));
       if (unresolved.length) out.push(F({ ruleId: 'R3c', dimension: 'consistency', severity: 'INFO',
         title: '豁免含历史多版本列表且不含实装版本（需人工判断）', measured: { unresolved: unresolved }, confidence: 'MEDIUM' }));
     } else if (excl === null) {
@@ -133,24 +157,26 @@ export function runRules(facts, allowlist) {
     }
 
     if (p.bakFiles.length) out.push(F({ ruleId: 'R4', dimension: 'consistency', severity: p.bakFiles.length > 10 ? 'P1' : 'P2',
-      title: '.bak/副本堆积 ' + p.bakFiles.length + ' 个（' + p.name + '）', evidence: [p.dir], measured: { count: p.bakFiles.length, files: p.bakFiles.slice(0, 15) },
+      title: '.bak/副本堆积 ' + p.bakFiles.length + ' 个（' + p.name + '）', evidence: [p.dir], measured: { count: p.bakFiles.length, files: p.bakFiles.slice(0, 15), profile: p.name },
       fixHint: 'L2: 归档到 _backup/profile-bak-<date>/ 后删除' }));
 
     var perm = (Array.isArray(entries) ? entries : []).filter(function (e) { return e.id === 'permission'; })[0];
     if (!perm) {
-      out.push(F({ ruleId: 'R7', dimension: 'security', severity: 'P2', title: '未显式声明权限 preset（' + p.name + ' 走宿主默认）', confidence: 'UNKNOWN' }));
+      out.push(F({ ruleId: 'R7', dimension: 'security', severity: 'P2', title: '未显式声明权限 preset（' + p.name + ' 走宿主默认）', confidence: 'UNKNOWN', measured: { profile: p.name } }));
     } else {
-      var cfg = perm.config || {};
-      var presetName = cfg.defaultPreset;
-      var preset = (cfg.presets || {})[presetName] || {};
+      // 2026-11-20 审计 P1：这里原名 cfg，var 提升到函数作用域，把顶部 allowlist 覆盖掉，
+      // 于是「第一个声明 permission 的 profile」之后，allowlist.corePatchIds/exclusionsDead 全部失效。
+      var permCfg = perm.config || {};
+      var presetName = permCfg.defaultPreset;
+      var preset = (permCfg.presets || {})[presetName] || {};
       var approval = preset.approval, sandbox = preset.sandbox;
       if (presetName === 'danger-full-access' && approval === 'never') {
         out.push(F({ ruleId: 'R7a', dimension: 'security', severity: 'P0',
           title: '默认档位 = danger-full-access 且 approval = never（' + p.name + '）',
-          evidence: [p.dir + '/cordis.patch.yml'], measured: { defaultPreset: presetName, sandbox: sandbox, approval: approval },
+          evidence: [p.dir + '/' + (p.patchFile || 'cordis.patch.yml')], measured: { defaultPreset: presetName, sandbox: sandbox, approval: approval, profile: p.name },
           fixHint: '价值判断，不自动改：可选 A 保持+加护栏 / B 改 workspace-write+ask / C 不动' }));
       } else if (approval === 'never') {
-        out.push(F({ ruleId: 'R7b', dimension: 'security', severity: 'P1', title: 'approval = never（' + p.name + '/' + presetName + '）', evidence: [p.dir + '/cordis.patch.yml'], measured: { defaultPreset: presetName, approval: approval } }));
+        out.push(F({ ruleId: 'R7b', dimension: 'security', severity: 'P1', title: 'approval = never（' + p.name + '/' + presetName + '）', evidence: [p.dir + '/' + (p.patchFile || 'cordis.patch.yml')], measured: { defaultPreset: presetName, approval: approval, profile: p.name } }));
       }
     }
   }
@@ -208,7 +234,7 @@ export function runRules(facts, allowlist) {
   });
   facts.engineAssets.forEach(function (a) {
     out.push(F({ ruleId: 'R18', dimension: 'disk', severity: 'INFO', title: '引擎资产（判为不可回收）：' + a.path.replace(facts.home, '~/.dsh'),
-      evidence: [a.path], measured: { hashSubdirs: a.hashSubdirs, marker: a.marker } }));
+      evidence: [a.path], measured: { hashSubdirs: a.hashSubdirs, marker: a.marker, dir: a.path } }));
   });
 
   // ---- R8 / R10 / R12 / R13 / R16 ----
@@ -236,6 +262,14 @@ export function runRules(facts, allowlist) {
       evidence: facts.credentialsFiles.map(function (f) { return facts.home + '/' + f; }),
       measured: { credentialsFiles: facts.credentialsFiles, defaultPreset: pp.preset },
       fixHint: '用 OS ACL 收紧凭据文件，或把默认档位降到 workspace-write；不自动执行' }));
+  } else if (facts.credentialsFiles && facts.credentialsFiles.length) {
+    // 2026-11-20 审计 P2：旧版只有「danger-full-access → P1」与「没凭据 → INFO」两个分支。
+    // 有凭据、但默认档位判不出来时一条都不报——安全维度在取证缺口时反而更安静。
+    out.push(F({ ruleId: 'R8', dimension: 'security', severity: 'P2', confidence: 'UNKNOWN',
+      title: '有凭据文件，但无法判定默认档位（' + (pp.preset || '未声明') + '）',
+      evidence: facts.credentialsFiles.map(function (f) { return facts.home + '/' + f; }),
+      measured: { credentialsFiles: facts.credentialsFiles, defaultPreset: pp.preset || null },
+      fixHint: '在补丁里显式声明 permission preset 后重跑；在此之前这一项判不了，不等于安全' }));
   } else if (!facts.credentialsFiles || !facts.credentialsFiles.length) {
     out.push(F({ ruleId: 'R8', dimension: 'security', severity: 'INFO', title: '未发现凭据文件，跳过栅栏可达性检查', confidence: 'UNKNOWN' }));
   }
@@ -300,7 +334,10 @@ export function runRules(facts, allowlist) {
         (provs[pn].models || []).forEach(function (m) { models.push(pn + '/' + m.id); });
       });
     }
-    var pol = comp ? (comp.config.modelPolicies || []).map(function (x) { return x.provider + '/' + x.model; }) : [];
+    // 2026-11-20 审计 P2：modelPolicies 写坏（对象/ null）时旧代码 .map 直接抛，
+    // 规则层整盘失败。形状不对按「没有」处理。
+    var rawPol = comp && comp.config && comp.config.modelPolicies;
+    var pol = Array.isArray(rawPol) ? rawPol.filter(function (x) { return x && typeof x === 'object'; }).map(function (x) { return x.provider + '/' + x.model; }) : [];
     if (models.length) {
       var covered = models.filter(function (m) { return pol.indexOf(m) !== -1; }).length;
       var ratio = Math.round((covered / models.length) * 1000) / 10;
@@ -409,7 +446,7 @@ export function runRules(facts, allowlist) {
     if (broken.length) {
       out.push(F({ ruleId: 'R22', dimension: 'reliability', severity: 'P0',
         title: 'file:/link: 依赖目标不存在 ' + broken.length + ' 个（' + p.name + '）',
-        evidence: [p.dir + '/package.json'], measured: { broken: broken },
+        evidence: [p.dir + '/package.json'], measured: { broken: broken, profile: p.name },
         fixHint: '宿主启动时该依赖解析失败 → 对应 bundle 会被静默跳过。修：恢复目录，或改依赖指向' }));
     }
   });

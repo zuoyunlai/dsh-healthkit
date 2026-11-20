@@ -61,7 +61,12 @@ export function score(rubric, findings, scenario) {
     var nominal = rubric.penalty[f.severity] || 0;
     var disc = typeof rubric.unknownDiscount === 'number' ? rubric.unknownDiscount : 0.5;
     var pen = f.confidence === 'UNKNOWN' ? nominal * disc : nominal;
-    d.penalties += pen; d.count += 1; d.items.push(f.ruleId);
+    d.penalties += pen;
+    // 2026-11-20 审计 P2：UNKNOWN 只该打折罚分，不该计入维度条数封顶。
+    // 旧写法下 3 个 profile 都没声明权限 → 3 条 R7 UNKNOWN 把 security 维度压到 5.5，
+    // 等于「取证不足」被判成「问题很多」。
+    if (f.confidence !== 'UNKNOWN') d.count += 1;
+    d.items.push(f.ruleId);
     if (f.severity === 'P0') p0++;
   });
   var weighted = 0, totalWeight = 0;

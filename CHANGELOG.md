@@ -1,5 +1,26 @@
 # CHANGELOG
 
+## 0.14.1 — 2026-11-20
+
+第三方审计反哺批（Claude Code 独立只读审计 + 本人逐条复核并补跑验证）。21 个工具，测试 45 组，39 条规则。
+
+- **P0 收紧不可逆写面**：`purge` 的 `olderThanDays` 加上 `PURGE_AFTER_DAYS` 下界（负值不再能绕过 7 天保护窗）；
+  批次身份改用目录名并复用 `BATCH_NAME_RE` + dirname 校验（清单里的 `batch` 字段不再被当成路径）；
+  模型面 `audit_clean action=purge` 需 `confirm:true`；`checkpoint keep` 夹到 `[1,100]`（`-1` 曾能删空全部快照）。
+- **P1 路径与写面**：`engine.mjs` 改用 `fileURLToPath`（中文/空格安装路径下原来整个插件失效）；
+  `audit_report` 拒绝写入 `DSH_HOME` 内任意路径（只允许工作区与插件 reports）；
+  `recover` 不再把 `auto-before-rollback:` 当成最新可用快照。
+- **P1 结论文档性**：`runRules` 的 `var cfg` 遮蔽改名 `permCfg`（第二个 profile 起 allowlist 失效）；
+  指纹尾部改为 profile 优先，R3/R3b/R4/R7/R7b/R18/R22 补实例标识（退役一条不再静音一串）；
+  `F()` 补 `target`（此前恒为空）；新增 `R25`：声明了 bundle 但未安装/不在依赖里 → 宿主会静默跳过（采集层早算好，规则层一直没引用）；
+  R8 补「有凭据但档位判不了」的 UNKNOWN 分支；采集同时读 `cordis.patch.yml`/`.yaml`（.yaml 用户此前安全规则整组不跑）。
+- **P2 采集与缓存**：bundles/patch 解析加形状守卫（坏形状不再让 21 个工具全挂）；
+  缓存指纹修正 `unlag-reload.log` 路径笔误，补 `pnpm-workspace.yaml`/`machines.json`/`.agent-presets`/凭据文件；
+  缓存键并入 `bundleIndex` 等影响 facts 形状的 opts；`audit_verify` 不再落盘覆盖开机验回；
+  验回对 YAML 缺口下的 patch 类目标记 `unverifiable`；UNKNOWN 不再计入维度条数封顶；门禁基线并入已退役指纹。
+- **文档/口径**：CLI `--older-than` 真正生效；清理预览不再硬写「machines.json 里仍有该机器」；
+  `docs/MATRIX.md` 重新生成（39 条）；新增 `test/audit-fixes.mjs`（8 组回归：指纹/遮蔽/形状/中文路径/写面/验回）。
+
 ## 0.14.0 — 2026-11-20
 
 产品反哺批：**从「哪里扣分」到「要不要动、怎么动不误伤」**。21 个工具，测试 44 组。

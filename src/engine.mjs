@@ -1,4 +1,5 @@
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import fs from 'node:fs';
 import { collect } from './collect.mjs';
 import { cachedCollect, wasCached } from './cache.mjs';
@@ -35,7 +36,9 @@ function require_history(home) {
 
 export function audit(opts) {
   opts = opts || {};
-  var here = path.dirname(new URL(import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1'));
+  // 2026-11-20 审计 P1：URL.pathname 带百分号编码（C:\\Users\\张三 → %E5%BC%A0…），
+  // 安装路径含中文/空格时 rubric.json 读不到，整个插件直接失效。fileURLToPath 才解编码。
+  var here = path.dirname(fileURLToPath(import.meta.url));
   var cfgDir = path.join(here, '..', 'config');
   var rubric = readJson(path.join(cfgDir, 'rubric.json'), null);
   var allowlist = readJson(path.join(cfgDir, 'allowlist.json'), {});

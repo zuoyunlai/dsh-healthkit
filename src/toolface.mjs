@@ -1,4 +1,4 @@
-// 工具面（Host 半边的一半）：19 个工具的定义、JSON Schema 与 execute。
+// 工具面（Host 半边的一半）：21 个工具的定义、JSON Schema 与 execute。
 //
 // 为什么单独成文件（0.13.2，审计 P2-4b）：原来这些和插件外壳（apply / status 落盘）
 // 挤在 index.js 里共 1,509 行，改一个工具要在一千多行里跳来跳去，工具数还被硬编码在
@@ -28,6 +28,9 @@ const RUN_SCHEMA = {
     retired: { type: 'number' },
     summary: { type: 'string' },
     gains: { type: 'array', items: { type: 'string' } },
+    // 2026-11-20 审计 P3：execute 一直在返回这两个字段却没声明（严格 schema 校验会丢）。
+    headline: { type: 'string' },
+    topActions: { type: 'array', items: { type: 'string' } },
   },
   required: ['score', 'band', 'p0', 'p1', 'p2', 'findings', 'summary'],
 };
@@ -418,6 +421,22 @@ export function buildTools(deps) {
         workspace,
       });
       if (target.error) throw new Error('audit_report: ' + target.error);
+      // 2026-11-20 审计 P1：模型面可传绝对 out。缺边界时一条 audit_report
+      // 就能把 profile 的 package.json 写成体检 JSON（与「只读」承诺冲突）。
+      // 只允许 DSH_HOME 之外的路径、插件自己的 reports 目录、或会话工作区。
+      {
+        const { dataDir } = await import('./paths.mjs');
+        const home0 = r.facts.home;
+        const reportsDir = path.join(dataDir(home0), 'reports');
+        const inside = (p, root) => {
+          if (!root) return false;
+          const rel = path.relative(root, p);
+          return !!rel && !rel.startsWith('..') && !path.isAbsolute(rel);
+        };
+        if (inside(target.path, home0) && !inside(target.path, reportsDir) && !inside(target.path, workspace)) {
+          throw new Error('audit_report: 拒绝写入 DSH_HOME 内的路径（会覆盖被检配置）：' + target.path + '；请改到工作区或插件 reports 目录');
+        }
+      }
       fs.mkdirSync(path.dirname(target.path), { recursive: true });
       // format=json → 机器可读全量报告（schema: dsh-healthkit/report/v1），供其他插件/脚本消费。
       if (args && args.format === 'json') {
@@ -494,6 +513,12 @@ export function buildTools(deps) {
         return { action: 'restore', ok: true, freedBytes: 0, moved: r.restored.length, dryRun: false, batch: String(r.batch || ''), summary: s };
       }
       if (a === 'purge') {
+        // 2026-11-20 审计 P1：purge 是唯一不可逆动作，模型面必须显式确认（CLI 有独立旗标）。
+        if (!(args && args.confirm)) {
+          const p0 = purge({ olderThanDays: (args && args.olderThanDays) || 7, dryRun: true });
+          return { action: 'purge', ok: false, freedBytes: 0, moved: 0, dryRun: true, batch: '',
+            summary: '未执行：purge 会永久删除回收区批次，需 confirm=true。\n预演：将删除 ' + p0.candidates.length + ' 个批次，' + fmtBytes(p0.bytes) + (p0.refused && p0.refused.length ? '\n拒绝 ' + p0.refused.length + ' 个（清单含受保护路径）' : '') };
+        }
         const r = purge({ olderThanDays: (args && args.olderThanDays) || 7, dryRun: !!(args && args.dryRun) });
         const n = r.dryRun ? r.candidates.length : r.purged.length;
         let s = (r.dryRun ? '预演：将永久删除 ' : '已永久删除 ') + n + ' 个批次，' + fmtBytes(r.bytes);
@@ -1058,7 +1083,9 @@ export function buildTools(deps) {
       // **每次都当场重算**——开机时那份（verify/last.json）只是历史快照，
       // 拿它当答案会掩盖「刚退役了一条」这类变化（2026-11-16 实测踩到：
       // 退役后再查仍显示退役前的结果，因为读的是开机时的旧记录）。
-      const v = ver.checkPending(r, { home });
+      // 2026-11-20 审计 P2：checkPending 会落盘，把开机那份「跨重启证据」覆盖成按需结果。
+      // 工具路径只算不写，落盘留给 startupVerify。
+      const v = ver.checkPending(r, { home, persist: false });
       const boot = ver.readLastVerify(home);
       const tl = ver.timeline(home, (args && args.limit) || 12);
       const L = [];
@@ -1144,6 +1171,9 @@ export function buildTools(deps) {
               at: prev.at || null,
               score: typeof prev.score === 'number' ? prev.score : null,
               fps: (prev.findings || []).map((f) => f.fp).filter(Boolean),
+              // 2026-11-20 审计 P2：已退役的指纹也要算进基线，否则退役的 P0/P1
+              // 每轮都会被判成「新增 WARN」，攒够 3 条就永久 exit 1。
+              retired: (prev.retired || []).slice(),
             };
           }
         } catch (e) { baseline = null; }
@@ -1346,7 +1376,8 @@ export function buildTools(deps) {
     execute: async (args) => {
       const { checkpoint } = await import('./recovery.mjs');
       const a = args || {};
-      const m = checkpoint(dshHome(), { reason: a.reason || 'tool', keep: typeof a.keep === 'number' ? a.keep : 10 });
+      const keepN = Math.max(1, Math.min(100, Math.trunc(Number(a.keep) || 10)));
+      const m = checkpoint(dshHome(), { reason: a.reason || 'tool', keep: keepN });
       return {
         action: 'checkpoint',
         id: m.id,

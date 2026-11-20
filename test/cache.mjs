@@ -66,8 +66,26 @@ delete process.env.DSH_HEALTHKIT_NO_CACHE;
   fs.mkdirSync(path.join(home, 'logs'), { recursive: true });
   fs.writeFileSync(path.join(home, 'logs', 'unrelated.log'), 'noise');
   ok('新建无关日志文件不该改变指纹', fingerprint(home) === fp0);
-  fs.writeFileSync(path.join(home, 'logs', 'unlag-reload.log'), 'served 3 plugins');
-  ok('改 unlag-reload.log 必须让指纹变化', fingerprint(home) !== fp0);
+  // 2026-11-20 审计 P2：collect 读的是顶层 unlag-reload.log，旧测试跟着实现一起写错了目录，
+  // 于是「日志变了不重采」这个真 bug 被测试掩盖。这里改为顶层，并补三项读集。
+  fs.writeFileSync(path.join(home, 'unlag-reload.log'), 'served 3 plugins');
+  ok('改顶层 unlag-reload.log 必须让指纹变化', fingerprint(home) !== fp0);
+  const fp1 = fingerprint(home);
+  fs.mkdirSync(path.join(home, 'profiles', 'p1'), { recursive: true });
+  fs.writeFileSync(path.join(home, 'profiles', 'p1', 'pnpm-workspace.yaml'), 'minimumReleaseAgeExclude: []');
+  ok('改 pnpm-workspace.yaml 必须让指纹变化（R3 直接读它）', fingerprint(home) !== fp1);
+  const fp2 = fingerprint(home);
+  fs.mkdirSync(path.join(home, 'remote-workspaces'), { recursive: true });
+  fs.writeFileSync(path.join(home, 'remote-workspaces', 'machines.json'), '[{"name":"m1"}]');
+  ok('改 machines.json 必须让指纹变化（R9 P0 的来源）', fingerprint(home) !== fp2);
+}
+
+// ⑦ 缓存键必须区分会影响 facts 形状的 opts（bundleIndex 不能串味）
+{
+  clearFactsCache();
+  const withIdx = audit({ scenario: 'general', bundleIndex: { idToBundles: { x: ['a'] } } });
+  const noIdx = audit({ scenario: 'general' });
+  ok('bundleIndex 与默认调用不得共用同一份缓存', withIdx.facts !== noIdx.facts);
 }
 
 fs.rmSync(home, { recursive: true, force: true });

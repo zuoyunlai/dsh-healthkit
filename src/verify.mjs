@@ -111,6 +111,9 @@ export function evaluatePending(result, opts) {
   //   fixed        —— 对象仍在被检查，判据明确不再命中
   //   unverifiable —— 对应 profile 本次读不出（体检覆盖不到，不能下结论）
   //   notApplicable—— 证据对象已不存在（profile 被删/路径消失，已不适用）
+  // 2026-11-20 审计 P2：YAML 解析器不可用时，patch 类规则整组不跑。旧逻辑把它们
+  // 一律算 fixed——覆盖缩小被记成「真修好」，正好违背 0.14 的五态口径。
+  const PATCH_RULES = ['R1', 'R2', 'R2c', 'R3', 'R4', 'R7', 'R7a', 'R7b', 'R10', 'R12', 'R13', 'R23', 'R25'];
   const brokenProfiles = new Set(((result.facts && result.facts.profileErrors) || []).map((e) => e.name));
   const liveProfiles = new Set(((result.facts && result.facts.profiles) || []).map((p) => p.name));
   const unverifiable = [];
@@ -121,6 +124,7 @@ export function evaluatePending(result, opts) {
     else if (retired[t.fp]) status = 'muted';
     else if (t.profile && brokenProfiles.has(t.profile)) status = 'unverifiable';
     else if (t.profile && liveProfiles.size && !liveProfiles.has(t.profile)) status = 'notApplicable';
+    else if (result.facts && result.facts.yamlAvailable === false && PATCH_RULES.indexOf(t.ruleId) !== -1) status = 'unverifiable';
     else if (t.evidence && !fs.existsSync(t.evidence)) status = 'notApplicable';
     else status = 'fixed';
     const row = { fp: t.fp, ruleId: t.ruleId, severity: t.severity, title: t.title, status: status };

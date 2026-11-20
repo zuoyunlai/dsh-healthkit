@@ -128,8 +128,11 @@ export function prune(home0, keep) {
   catch (e) { return 0; }
   // 自动快照（rollback 前的保险）参与排序但**不主动删最旧的手动快照**：
   // 简单做法是统一按名字（含时间戳）排序保留最后 N 个，够用且可预测。
+  // 2026-11-20 审计 P2：keep=-1 会让 slice 越界并删掉**全部**快照（含刚建的那份）。
+  // 夹到 [1, 100]，负值/NaN 一律回落默认。
+  const keepN = Number.isFinite(Number(keep)) ? Math.max(1, Math.min(100, Math.trunc(Number(keep)))) : KEEP;
   const sorted = names.sort();
-  const excess = sorted.slice(0, Math.max(0, sorted.length - (keep || KEEP)));
+  const excess = sorted.slice(0, Math.max(0, sorted.length - keepN));
   let removed = 0;
   for (const id of excess) {
     try { fs.rmSync(path.join(base, id), { recursive: true, force: true }); removed += 1; } catch (e) { /* ignore */ }
@@ -359,7 +362,10 @@ export function recover(home0, opts) {
   }
   const list = listCheckpoints(home);
   if (!list.length) return { ok: false, acted: false, reason: 'no-checkpoint', preflight: before };
-  const target = list[list.length - 1];
+  // 2026-11-20 审计 P2：auto-before-rollback:* 是「回滚前的坏状态」保险，
+  // 把它当「最新可用快照」就是救砖时把用户送回去。救回只认手动/预升级快照。
+  const usable = list.filter((x) => !/^auto-before-rollback:/.test(String(x.id || '')));
+  const target = (usable.length ? usable : list)[usable.length ? usable.length - 1 : list.length - 1];
   const r = rollback(home, target.id, { reason: 'recover' });
   const after = bootPreflight(home);
   return { ok: r.ok, acted: true, rolledBackTo: target.id, backup: r.backup, written: r.written, skipped: r.skipped, before, after };

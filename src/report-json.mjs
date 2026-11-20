@@ -162,7 +162,8 @@ export function buildGateEnvelope(result, opts) {
     env.note = '没有基线快照：本次按绝对状态判定（老行为）。跑一次 audit_run 记账后即启用基线门。';
     return env;
   }
-  const base = new Set(baseline.fps);
+  // 退役指纹并入基线：退役不等于修好，但也不该每轮都被算成「新增」去卡 CI。
+  const base = new Set(baseline.fps.concat(Array.isArray(baseline.retired) ? baseline.retired : []));
   // 给每条 check 标 fresh：调用方（CLI/工具）要用它只列「新增」的那几条。
   env.checks.forEach(function (c) { c.fresh = !base.has(c.fp); });
   const fresh = env.checks.filter(function (c) { return c.fresh; });

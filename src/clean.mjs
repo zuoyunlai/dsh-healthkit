@@ -128,7 +128,7 @@ export function scan(opts) {
     for (const d of dirs) {
       if (!d.isDirectory() || !/^\d+\.\d+\.\d+\.\d+-/.test(d.name)) continue;
       const p = path.join(rw, d.name);
-      groups.push(group('mirror:' + d.name, '远程工作区镜像 ' + d.name, 'confirm', 'machines.json 里仍有该机器；删掉是删本地同步副本，需显式确认', [entry(p, 'dir')]));
+      groups.push(group('mirror:' + d.name, '远程工作区镜像 ' + d.name, 'confirm', '删掉会删本地同步副本（需先确认 machines.json 里是否仍需要这台机器）；需显式确认', [entry(p, 'dir')]));
     }
   }
 
@@ -141,7 +141,9 @@ export function scan(opts) {
 function stamp() {
   const d = new Date();
   const p = (n) => String(n).padStart(2, '0');
-  return d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate()) + '-' + p(d.getHours()) + p(d.getMinutes()) + p(d.getSeconds());
+  // 2026-11-20 审计 P2：只到秒时，同秒两次 apply 会复用批次目录并覆盖 manifest，
+  // 第一批文件留在 items/ 下却失去清单（「7 天可还原」当场失效）。加毫秒。
+  return d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate()) + '-' + p(d.getHours()) + p(d.getMinutes()) + p(d.getSeconds()) + '-' + String(d.getMilliseconds()).padStart(3, '0');
 }
 
 function moveEntry(from, to) {
@@ -228,7 +230,10 @@ export function listBatches() {
     if (!d.isDirectory()) continue;
     const m = readJson(path.join(root, d.name, 'manifest.json'), null);
     if (!m) continue;
-    out.push({ batch: m.batch || d.name, createdAt: m.createdAt, ageDays: daysAgo(new Date(m.createdAt).getTime()), bytes: (m.totals && m.totals.bytes) || 0, files: (m.totals && m.totals.files) || 0, entries: (m.totals && m.totals.entries) || 0, restoreBefore: m.restoreBefore });
+    // 2026-11-20 审计 P1：批次身份一律用**目录名**，不采信清单里的 batch 字段——
+    // 清单是数据不是授权，purge 会拿它 path.join 后 rmSync。非法目录名直接不列。
+    if (!BATCH_NAME_RE.test(d.name) || d.name === '.' || d.name === '..') continue;
+    out.push({ batch: d.name, createdAt: m.createdAt, ageDays: daysAgo(new Date(m.createdAt).getTime()), bytes: (m.totals && m.totals.bytes) || 0, files: (m.totals && m.totals.files) || 0, entries: (m.totals && m.totals.entries) || 0, restoreBefore: m.restoreBefore });
   }
   out.sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
   return out;
@@ -291,29 +296,39 @@ export function restore(batch) {
 
 export function purge(opts) {
   const o = opts || {};
-  const olderThan = Number.isFinite(o.olderThanDays) ? o.olderThanDays : PURGE_AFTER_DAYS;
+  // 2026-11-20 审计 P0：旧写法只做 Number.isFinite，传 -1 就绕过「7 天可还原」直接删光。
+  // 下界必须钉死在 PURGE_AFTER_DAYS，不能让调用方（含模型）把保护窗改小。
+  const asked = Number(o.olderThanDays);
+  const olderThan = Number.isFinite(asked) ? Math.max(PURGE_AFTER_DAYS, asked) : PURGE_AFTER_DAYS;
   const victims = listBatches().filter((b) => b.ageDays !== null && b.ageDays >= olderThan);
   // 二次校验：purge 是唯一不可逆的一步。清单里只要有一项原始路径命中护栏，
   // 整个批次拒绝删除（护栏漏过的历史批次就靠这一层兜住），并如实报出来。
   const candidates = [];
   const refused = [];
   for (const v of victims) {
-    const m = readJson(path.join(trashDir(), v.batch, 'manifest.json'), null);
+    // 3) 批次名本身就是路径：只允许单段目录名，且必须在 trash 内（与 restore 同一套判据）。
+    const name = String(v.batch || '');
+    const dir = path.join(trashDir(), name);
+    if (!BATCH_NAME_RE.test(name) || name === '.' || name === '..' || path.dirname(path.resolve(dir)) !== path.resolve(trashDir())) {
+      refused.push({ batch: name || '(空)', path: '(非法批次名)', guard: 'batch-name' });
+      continue;
+    }
+    const m = readJson(path.join(dir, 'manifest.json'), null);
     const items = m && Array.isArray(m.items) ? m.items : [];
     let hit = null;
     for (const it of items) {
       const g = forbidden(it && it.from);
       if (g) { hit = { path: it.from, guard: g }; break; }
     }
-    if (hit) refused.push({ batch: v.batch, path: hit.path, guard: hit.guard });
-    else candidates.push(v);
+    if (hit) refused.push({ batch: name, path: hit.path, guard: hit.guard });
+    else candidates.push({ v, dir, name });
   }
-  if (o.dryRun) return { ok: true, dryRun: true, purged: [], candidates: candidates.map((v) => v.batch), refused, bytes: candidates.reduce((a, v) => a + v.bytes, 0) };
+  if (o.dryRun) return { ok: true, dryRun: true, purged: [], candidates: candidates.map((c) => c.name), refused, bytes: candidates.reduce((a, c) => a + c.v.bytes, 0) };
   const purged = [];
-  for (const v of candidates) {
-    try { fs.rmSync(path.join(trashDir(), v.batch), { recursive: true, force: true }); purged.push(v.batch); } catch (e) { /* 下次再试 */ }
+  for (const c of candidates) {
+    try { fs.rmSync(c.dir, { recursive: true, force: true }); purged.push(c.name); } catch (e) { /* 下次再试 */ }
   }
-  return { ok: true, dryRun: false, purged, refused, bytes: candidates.reduce((a, v) => a + v.bytes, 0) };
+  return { ok: true, dryRun: false, purged, refused, bytes: candidates.reduce((a, c) => a + c.v.bytes, 0) };
 }
 
 export function renderScan(s) {
