@@ -1,14 +1,20 @@
 // 2026-11-20 审计反哺回归：身份 / 遮蔽 / 形状 / 路径编码 / 写面边界。
+//
+// 2026-11-20 修：首版把仓库根写成硬编码 Windows 路径，CI（ubuntu）直接
+// ERR_MODULE_NOT_FOUND —— 门禁红在 tag 上。现在一律从 import.meta.url 推。
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
-const root = 'E:/Documents/deepseek-harness/plugins/dsh-healthkit';
+const here = path.dirname(fileURLToPath(import.meta.url));
+const root = path.resolve(here, '..');
+const mod = (rel) => pathToFileURL(path.join(root, rel)).href;
 const home = fs.mkdtempSync(path.join(os.tmpdir(), 'hk-fix-'));
 process.env.DSH_HOME = home;
 
-const { runRules } = await import('file:///' + root + '/src/rules.mjs');
+const { runRules } = await import(mod('src/rules.mjs'));
 const baseProfile = (name, extra) => Object.assign({
   name, dir: '/x/profiles/' + name, deps: [], bundles: [], thirdPartyBundles: [],
   noManifestBundles: [], depsNotBundled: [], depsNotBundledRaw: [], bakFiles: [],
@@ -44,7 +50,7 @@ const facts = (profiles, patchEntries) => ({
   const pdir = path.join(home, 'profiles', 'p1');
   fs.mkdirSync(pdir, { recursive: true });
   fs.writeFileSync(path.join(pdir, 'package.json'), JSON.stringify({ name: 'p1', dependencies: {}, dsh: { profile: { bundles: { bad: 1 } } } }));
-  const { collect } = await import('file:///' + root + '/src/collect.mjs');
+  const { collect } = await import(mod('src/collect.mjs'));
   const f = collect({});
   assert.ok(Array.isArray(f.profiles), '坏形状时采集仍应返回结构');
   assert.ok(f.profileErrors.some((e) => e.reason === 'bundle-shape'), '坏形状要留 profileError');
@@ -57,18 +63,17 @@ const facts = (profiles, patchEntries) => ({
   fs.cpSync(path.join(root, 'src'), path.join(dir, 'src'), { recursive: true });
   fs.cpSync(path.join(root, 'config'), path.join(dir, 'config'), { recursive: true });
   fs.copyFileSync(path.join(root, 'package.json'), path.join(dir, 'package.json'));
-  const eng = await import('file:///' + dir.replace(/\\/g, '/') + '/src/engine.mjs');
+  const eng = await import(pathToFileURL(path.join(dir, 'src', 'engine.mjs')).href);
   const r = eng.audit({ scenario: 'general', skipRetire: true });
   assert.ok(typeof r.score.total === 'number', '中文/带空格路径下 audit 必须能跑，实得 ' + JSON.stringify(r && r.score));
 }
 
 // ⑤ purge：非法批次名不列、负 olderThanDays 不能缩短保护窗
 {
-  const { trashDir } = await import('file:///' + root + '/src/clean.mjs');
-  const bad = path.join(trashDir(), 'b-bad');
+  const clean = await import(mod('src/clean.mjs'));
+  const bad = path.join(clean.trashDir(), 'b-bad');
   fs.mkdirSync(bad, { recursive: true });
   fs.writeFileSync(path.join(bad, 'manifest.json'), JSON.stringify({ batch: '../../victim', createdAt: new Date().toISOString(), items: [], totals: {} }));
-  const clean = await import('file:///' + root + '/src/clean.mjs');
   const listed = clean.listBatches().map((x) => x.batch);
   assert.ok(!listed.includes('../../victim'), '非法批次名不得进入列表');
   const p = clean.purge({ olderThanDays: -1, dryRun: true });
@@ -77,7 +82,7 @@ const facts = (profiles, patchEntries) => ({
 
 // ⑥ checkpoint keep 负值不得删空
 {
-  const rec = await import('file:///' + root + '/src/recovery.mjs');
+  const rec = await import(mod('src/recovery.mjs'));
   const h2 = fs.mkdtempSync(path.join(os.tmpdir(), 'hk-keep-'));
   for (const n of ['a', 'b', 'c']) {
     fs.mkdirSync(path.join(h2, 'dsh-healthkit', 'checkpoints', n), { recursive: true });
@@ -91,7 +96,7 @@ const facts = (profiles, patchEntries) => ({
 
 // ⑦ audit_report 不得写进 DSH_HOME
 {
-  const { buildTools } = await import('file:///' + root + '/index.js');
+  const { buildTools } = await import(mod('index.js'));
   const byName = {};
   for (const x of buildTools({})) byName[x.name] = x;
   await assert.rejects(
@@ -103,12 +108,10 @@ const facts = (profiles, patchEntries) => ({
 
 // ⑧ 验回：YAML 不可用时 patch 类目标记「无法复核」，不得记成修好
 {
-  const ver = await import('file:///' + root + '/src/verify.mjs');
+  const ver = await import(mod('src/verify.mjs'));
   const h3 = fs.mkdtempSync(path.join(os.tmpdir(), 'hk-verify-'));
-  const pending = { score: { total: 8 }, findings: [{ fp: 'R2#a', ruleId: 'R2', severity: 'P2', dimension: 'consistency', title: '空转', fixHint: '删条目', advisory: false, measured: { profile: 'a' } }], retired: [] };
-  // 直接写待验清单（writePending 只认带修法的项）
   fs.mkdirSync(path.dirname(ver.pendingPath(h3)), { recursive: true });
-  fs.writeFileSync(ver.pendingPath(h3), JSON.stringify({ at: new Date().toISOString(), score: 8, targets: pending.findings.map((f) => ({ fp: f.fp, ruleId: f.ruleId, severity: f.severity, title: f.title, fixHint: f.fixHint, profile: 'a', evidence: null })) }));
+  fs.writeFileSync(ver.pendingPath(h3), JSON.stringify({ at: new Date().toISOString(), score: 8, targets: [{ fp: 'R2#a', ruleId: 'R2', severity: 'P2', title: '空转', fixHint: '删条目', profile: 'a', evidence: null }] }));
   const v = ver.evaluatePending({ findings: [], retired: [], facts: { profiles: [{ name: 'a' }], profileErrors: [], yamlAvailable: false } }, { home: h3 });
   assert.equal(v.unverifiable.length, 1, 'YAML 缺口下 patch 类目标必须是 unverifiable，实得 ' + JSON.stringify({ f: v.fixed.length, u: v.unverifiable.length }));
   fs.rmSync(h3, { recursive: true, force: true });
@@ -116,7 +119,7 @@ const facts = (profiles, patchEntries) => ({
 
 // ⑨ 护栏按相对段判定：home 自身含 data 不再误杀，受保护段仍要拦
 {
-  const { forbidden } = await import('file:///' + root + '/src/clean.mjs');
+  const { forbidden } = await import(mod('src/clean.mjs'));
   const prev = process.env.DSH_HOME;
   const h4 = path.join(home, 'data', 'dsh');
   process.env.DSH_HOME = h4;
@@ -127,7 +130,7 @@ const facts = (profiles, patchEntries) => ({
 
 // ⑩ 坏 profile 不得拖垮其它 profile 的采集
 {
-  const { collect } = await import('file:///' + root + '/src/collect.mjs');
+  const { collect } = await import(mod('src/collect.mjs'));
   const p2 = path.join(home, 'profiles', 'p2');
   fs.mkdirSync(p2, { recursive: true });
   fs.writeFileSync(path.join(p2, 'package.json'), JSON.stringify({ name: 'p2', dependencies: {} }));
@@ -139,8 +142,8 @@ const facts = (profiles, patchEntries) => ({
 
 // ⑪ dshHome 两份实现不得分叉
 {
-  const rp = await import('file:///' + root + '/src/reportpath.mjs');
-  const ut = await import('file:///' + root + '/src/util.mjs');
+  const rp = await import(mod('src/reportpath.mjs'));
+  const ut = await import(mod('src/util.mjs'));
   assert.equal(rp.dshHome(), ut.dshHome(), 'reportpath 与 util 的默认 DSH_HOME 必须一致');
   assert.equal(rp.dshHome({ DSH_HOME: '/tmp/x' }), '/tmp/x', '显式 env 仍要生效');
 }

@@ -18,6 +18,10 @@
   缓存指纹修正 `unlag-reload.log` 路径笔误，补 `pnpm-workspace.yaml`/`machines.json`/`.agent-presets`/凭据文件；
   缓存键并入 `bundleIndex` 等影响 facts 形状的 opts；`audit_verify` 不再落盘覆盖开机验回；
   验回对 YAML 缺口下的 patch 类目标记 `unverifiable`；UNKNOWN 不再计入维度条数封顶；门禁基线并入已退役指纹。
+- **首发 CI 失败与重指（同日）**：`test/audit-fixes.mjs` 首版把仓库根写成硬编码 Windows 路径，
+  ubuntu runner 上直接 `ERR_MODULE_NOT_FOUND`，导致 main 的 ci 与 v0.14.1 的 publish 双红。
+  npm 未发布、GitHub Release 未创建（publish 失败后 release 作业不跑），已改为从 `import.meta.url` 推路径，
+  本地 45 组全绿后**删除并重指** `v0.14.1` 到修正提交。
 - **文档/口径**：CLI `--older-than` 真正生效；清理预览不再硬写「machines.json 里仍有该机器」；
   `docs/MATRIX.md` 重新生成（39 条）；新增 `test/audit-fixes.mjs`（11 组回归：指纹/遮蔽/形状/中文路径/写面/验回/护栏/隔离/dshHome）。
 - **第二批（同日续修）**：采集改逐 profile 兜底（单个 profile 的异常不再让 21 个工具全挂，
