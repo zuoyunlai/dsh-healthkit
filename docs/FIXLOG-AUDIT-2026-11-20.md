@@ -83,5 +83,23 @@
 - **`target` 全覆盖**：只补了三个最容易「指错地方」的规则；其余规则靠 profile 兜底。
 - **R25 定为 P1 而非 P0**：`audit_boot` 才是「起不来」的权威判定；评分面用 P0 会造成分数悬崖，先用 P1 + 修法。
 
-**提交状态**：版本 `0.14.1`，本地提交，**不推送**（未发版）。
+**提交状态**：版本 `0.14.1`，已按规则发版（见下节）。
+
+## 五、发版记录（v0.14.1，2026-11-20）
+
+- **首发翻车**：v0.14.1 首次指向 275e13d，main 的 ci 与 tag 的 publish 双红——test/audit-fixes.mjs 首版把仓库根写成硬编码 Windows 路径，ubuntu runner 上 ERR_MODULE_NOT_FOUND。npm 未发布、Release 未创建（publish 失败 ⇒ release 作业不跑）。
+- **修复与重指**：改成从 import.meta.url 推路径，本地 45 组全绿后提交 fbab0c0，删除并重指 v0.14.1（标签历史重写，仅在「从未发布」时成立）。
+- **结果**：ci 成功（main，fbab0c0）· publish 成功（publish 19s / release 5s）。
+
+| 互锁 | 实测 |
+|---|---|
+| 资产一致性 | 本地 npm pack shasum f229d66c…25a = registry dist.shasum；integrity sha512-aK6t77… 一致；fileCount 99 = 本地 entryCount 99 |
+| 提交身份 | registry gitHead = fbab0c0ac89a8e361c38ba0f00aaf2a363a387a8 = tag 提交 |
+| 发布身份 | _npmUser = GitHub Actions + trustedPublisher{id:github}（OIDC）；attestations = SLSA provenance/v1 |
+| Release | v0.14.1 非 draft，正文 = CHANGELOG 首段（逐字比对仅差尾随空行） |
+| dist-tags | latest = 0.14.1 |
+
+- **传播**：tag 推送后约 1–2 分钟 registry 即可查（本次比历史 6–10 分钟快），期间 404 未重推。
+- **教训**：门禁类测试里不许出现绝对路径——测试只能在本机跑，它就不是门禁，只是作者的本地脚本。
+
 
