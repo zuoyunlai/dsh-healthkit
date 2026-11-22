@@ -28,8 +28,25 @@ const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'healthkit-outside-'));
 fs.writeFileSync(path.join(outside, 'huge.bin'), Buffer.alloc(1024 * 1024, 3));
 const linkType = process.platform === 'win32' ? 'junction' : 'dir';
 const link = path.join(cache, 'link-to-outside');
-fs.symlinkSync(outside, link, linkType);
-assert.ok(fs.lstatSync(link).isSymbolicLink(), '前置条件：符号链接没建成功，本测试无意义');
+// 2026-11-22（B2）：本用例的前提是「本机真能建出可识别的符号链接」。Windows 上若无
+// SeCreateSymbolicLinkPrivilege，'dir' 类型直接 EPERM；Node 26 上 junction 的
+// lstat().isSymbolicLink() 也可能为 false（实测过）。此时用例无意义 —— 打印原因并 SKIP，
+// 而不是 FAIL：本机长期红灯会把真缺陷埋掉。CI（ubuntu）仍真跑。
+let linkReady = false;
+let linkWhy = '';
+try {
+  fs.symlinkSync(outside, link, linkType);
+  linkReady = fs.lstatSync(link).isSymbolicLink();
+  if (!linkReady) linkWhy = "junction 的 lstat().isSymbolicLink() 为 false（Node " + process.version + "）";
+} catch (e) {
+  linkWhy = 'symlink 创建失败：' + (e.code || e.message);
+}
+if (!linkReady) {
+  fs.rmSync(home, { recursive: true, force: true });
+  fs.rmSync(outside, { recursive: true, force: true });
+  console.log('clean-symlink: SKIP（本机建不出可识别的符号链接：' + linkWhy + '）—— CI（ubuntu）真跑');
+  process.exit(0);
+}
 
 // ① 统计不跟随
 const s = scan();

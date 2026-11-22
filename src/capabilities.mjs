@@ -6,7 +6,10 @@ import { readJson } from './util.mjs';
 // 把「插件市场 / SSH 远程 / 项目记忆」这些描述里顺带提到 search 的都算成搜索实现，
 // 结果给出「关掉 dsh-free-search、留 dshmarket」这种反向建议。宁可少报，不可乱指。
 var TAGS = [
-  { key: 'image', re: /(image-gen|image generation|image gen|vision hub|vision bridge|ocr|modlens)/i },
+  // 2026-11-22 修（B3b）：原来把 vision hub / vision bridge / ocr / modlens 也算进 image，
+  // 于是视觉插件被计成「图像生成实现」，trim 报出假的「image ×3」。视觉归 vision-ocr 域，
+  // 这里只留真正产出图片的实现。
+  { key: 'image', re: /(image-gen|image generation|image gen|文生图)/i },
   { key: 'search', re: /(free-search|web search|web-search|search engine|搜索引擎|crawl|scrap)/i },
   { key: 'browser', re: /(browser|ego)/i },
 ];

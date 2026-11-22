@@ -18,7 +18,11 @@ export function analyze(facts) {
   var caps = (facts && facts.capabilities) || {};
   var logs = (facts && facts.logs) || {};
   var redundancy = caps.redundancy || [];
-  var maxBundles = (facts && facts.maxBundles) || 43;
+  // 2026-11-22 修（B4）：原来兜底写死 43，而 facts.maxBundles 从来没人赋过值 —— 于是「上限」
+  // 恒为 43。desktop 的 bundles 变成 45 时，R15 会说 45、这里仍说 43，同一次报告自相矛盾。
+  // 改成与 R15 同一套现算：取各 profile bundles 数组长度的最大值。这是「基线」，不是官方上限。
+  var maxBundles = 0;
+  profiles.forEach(function (p) { maxBundles = Math.max(maxBundles, (p.bundles || []).length); });
   var served = typeof logs.servedPlugins === 'number' ? logs.servedPlugins : null;
 
   var thirdParty = [];
@@ -61,8 +65,8 @@ export function analyze(facts) {
   });
 
   var suggestions = [];
-  if (served !== null && served > maxBundles) {
-    suggestions.push('服务插件 ' + served + ' 个，超过宿主 bundles 上限 ' + maxBundles + '：优先砍「同能力多实现」，别砍基础设施（ui/privacy/permissions）');
+  if (served !== null && maxBundles > 0 && served > maxBundles) {
+    suggestions.push('服务插件 ' + served + ' 个 > 最大 profile 的 bundles 数 ' + maxBundles + '（配比失衡，不是官方上限）：优先砍「同能力多实现」，别砍基础设施（ui/privacy/permissions）');
   }
   groups.forEach(function (g) {
     suggestions.push(g.tag + ' 有 ' + g.count + ' 个实现：主力看着像 ' + g.keep + '；其余 ' + g.drop.join('、') + ' 是候选，关之前先确认它们的用途');
@@ -70,7 +74,7 @@ export function analyze(facts) {
   if (mem.length >= 3) {
     suggestions.push(mem.length + ' 套记忆/上下文插件同时在装：' + mem.map(function (m) { return m.name; }).join('、') + '——每轮都会注入，定主备后关掉其余');
   }
-  if (!suggestions.length) suggestions.push('没有发现需要瘦身的装载面（无冗余组、未超上限、记忆插件 ≤2 套）');
+  if (!suggestions.length) suggestions.push('没有发现需要瘦身的装载面（无冗余组、服务插件数未超基线、记忆插件 ≤2 套）');
 
   return {
     served: served,
@@ -84,7 +88,7 @@ export function analyze(facts) {
 
 export function render(r) {
   var L = [];
-  L.push('装载面：' + (r.served === null ? '服务插件数未知' : '服务插件 ' + r.served + ' 个') + ' / bundles 上限 ' + r.maxBundles + ' · 第三方 bundle ' + r.thirdParty.length + ' 个');
+  L.push('装载面：' + (r.served === null ? '服务插件数未知' : '服务插件 ' + r.served + ' 个') + ' / 最大 profile bundles ' + r.maxBundles + '（基线，非官方上限） · 第三方 bundle ' + r.thirdParty.length + ' 个');
   L.push('（按名字/描述粗筛，误判常见——每组只给「看着像主力」的那个，其余都要你自己确认用途）');
   L.push('');
   if (r.groups.length) {

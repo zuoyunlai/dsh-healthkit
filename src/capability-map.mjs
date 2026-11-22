@@ -49,7 +49,15 @@ export function deriveSignals(facts) {
       if (c.searchProvider) sig.searchProviders.push({ profile: p.name, id: e.id, name, provider: c.searchProvider });
       if (c.fetchProviderTakeover === true) sig.takeovers.push({ profile: p.name, id: e.id, name, provider: c.fetchProvider || null });
       if (c.providers && typeof c.providers === 'object') {
-        sig.modelProviders.push({ profile: p.name, id: e.id, name, list: Object.keys(c.providers) });
+        // 2026-11-22（B1）：连模型的**数量**一起带上——判缺口要区分「有模型的 provider」
+        // 与「0 模型的空壳 provider」，只留 key 就分不出来。
+        sig.modelProviders.push({
+          profile: p.name, id: e.id, name,
+          list: Object.keys(c.providers).map(function (k) {
+            var v = (c.providers[k] && typeof c.providers[k] === 'object') ? c.providers[k] : {};
+            return { name: k, models: Array.isArray(v.models) ? v.models.length : 0 };
+          }),
+        });
       }
       if (Array.isArray(c.modelPolicies)) {
         for (const m of c.modelPolicies) {
@@ -150,20 +158,46 @@ function hits(facts, re) {
 
 const DETECT = {
   modelRouting(facts, sig) {
-    const declared = sig.modelProviders.reduce((n, x) => n + x.list.length, 0);
-    const covered = {};
-    for (const m of sig.modelPolicies) if (m.provider) covered[m.provider] = true;
-    const coveredCount = Object.keys(covered).length;
-    if (!declared) return { status: 'unknown', detail: '未读到模型 provider 配置', evidence: [] };
-    if (coveredCount >= 1 && coveredCount < declared) {
+    // 2026-11-22 修（B1）：旧判据拿「跨 profile 累加的 provider 数」当分母、拿「策略里出现过的
+    // provider 去重数」当分子 —— 两个数不是同一集合（同桌还含声明面之外的账号 provider，同 provider
+    // 在 desktop/web 各算一次）。实测得出「声明 10 个，只有 5 个有策略」，实际缺口只有 2 个。
+    // 新判据：按 (profile, provider) 同集合比对，缺口 = **声明了模型却没有 modelPolicy** 的 provider；
+    // 0 模型的空壳 provider 单列，不算缺口。
+    const missing = [];
+    const empty = [];
+    const policyOnly = [];
+    let declaredProviders = 0;
+    let declaredModels = 0;
+    for (const entry of sig.modelProviders) {
+      const pol = new Set(sig.modelPolicies.filter((m) => m.profile === entry.profile && m.provider).map((m) => m.provider));
+      for (const item of entry.list) {
+        declaredProviders += 1;
+        declaredModels += item.models;
+        if (pol.has(item.name)) continue;
+        if (item.models === 0) empty.push(entry.profile + '/' + item.name);
+        else missing.push(entry.profile + '/' + item.name + '（' + item.models + ' 个模型）');
+      }
+      for (const name of pol) {
+        if (!entry.list.some((x) => x.name === name)) policyOnly.push(entry.profile + '/' + name);
+      }
+    }
+    if (!declaredProviders) return { status: 'unknown', detail: '未读到模型 provider 配置', evidence: [] };
+    if (missing.length) {
       return {
         status: 'degraded',
-        detail: '声明 ' + declared + ' 个 provider，只有 ' + coveredCount + ' 个有压缩策略（模型目录与可路由面不一致）',
+        detail: missing.length + ' 个 provider 声明了模型但没有压缩策略：' + missing.join('、') +
+          (empty.length ? '；另有 ' + empty.length + ' 个空壳 provider（0 模型，不计缺口）：' + empty.join('、') : ''),
         evidence: sig.modelProviders.map((x) => x.id),
-        extra: { declared, covered: coveredCount },
+        extra: { declaredProviders, declaredModels, missing, empty },
       };
     }
-    return { status: 'present', detail: declared + ' 个 provider，' + coveredCount + ' 个有策略', evidence: [] };
+    return {
+      status: 'present',
+      detail: declaredProviders + ' 个 provider（' + declaredModels + ' 个模型）压缩策略全覆盖' +
+        (empty.length ? '；' + empty.length + ' 个空壳 provider（0 模型）不计：' + empty.join('、') : '') +
+        (policyOnly.length ? '；策略里另有未声明的 provider：' + policyOnly.join('、') : ''),
+      evidence: [],
+    };
   },
   sessionPersist(facts, sig) {
     const h = hits(facts, THIRD_RE.persist);
@@ -177,17 +211,37 @@ const DETECT = {
     return { status: 'unknown', detail: 'shell 由宿主 ops 能力提供，插件层看不到', evidence: [] };
   },
   webSearch(facts, sig) {
-    // 冲突判据：接管型实现与宿主 provider 并存 ⇒ 两个实现抢同一工具位。
-    if (sig.takeovers.length && sig.fetchProviders.length) {
-      const t = sig.takeovers[0];
-      const host = sig.fetchProviders.filter((x) => x.id !== t.id)[0];
+    // 2026-11-22 修（B3a）：旧判据「有人 takeover=true 且存在别的 fetchProvider」把**宿主委托给
+    // 插件 provider** 的合法接线判成冲突。实测形态：web.fetchProvider = fs-quality-fetch（插件注册的
+    // provider）+ 插件 fetchProviderTakeover=true —— 这正是 dsh-free-search README 说的
+    // 「官方搜索 + 插件抓取」单入口。真冲突只有两种：① 两个插件都想接管；② 两个实现把
+    // fetchProvider 指向了两个不同的 provider。
+    const distinctPins = [];
+    for (const p of sig.fetchProviders) {
+      if (p.provider && !distinctPins.includes(p.provider)) distinctPins.push(p.provider);
+    }
+    if (sig.takeovers.length >= 2) {
       return {
         status: 'conflicting',
-        detail: '抓取能力被两个实现同时接管：' + t.name + '（fetchProviderTakeover=true）' +
-          (host ? ' 与 ' + host.name + '（fetchProvider=' + host.provider + '）' : ''),
-        evidence: sig.takeovers.map((x) => x.id),
-        extra: { takeovers: sig.takeovers, providers: sig.fetchProviders },
+        detail: '两个插件同时声明接管 web.fetchProvider：' + sig.takeovers.map((t) => t.name + '（' + t.id + '）').join('、'),
+        evidence: sig.takeovers.map((t) => t.id),
+        extra: { takeovers: sig.takeovers },
       };
+    }
+    if (distinctPins.length >= 2) {
+      return {
+        status: 'conflicting',
+        detail: '两个实现各把 web.fetchProvider 指向不同 provider：' + distinctPins.join('、'),
+        evidence: sig.fetchProviders.map((x) => x.id),
+        extra: { providers: sig.fetchProviders },
+      };
+    }
+    const pin = distinctPins[0] || null;
+    if (sig.takeovers.length || pin) {
+      const parts = [];
+      if (sig.takeovers.length === 1) parts.push('抓取由 ' + sig.takeovers[0].name + ' 接管（fetchProviderTakeover=true）');
+      if (pin) parts.push('web.fetchProvider = ' + pin);
+      return { status: 'present', detail: parts.join('；') + '（单入口委托接线，非冲突）', evidence: [] };
     }
     const h = hits(facts, THIRD_RE.search);
     if (h.length >= 2) return { status: 'redundant', detail: h.map((x) => x.name).join('、'), evidence: [] };
@@ -300,12 +354,13 @@ const DETECT = {
     return { status: 'unknown', detail: '表格/图表能力可能由宿主 skill 提供，静态审计分不出', evidence: [] };
   },
   themeA11y(facts, sig) {
+    // 2026-11-22 修（B3c）：原来把 theme 命中数 + panel 命中数相加，>=3 就判 redundant，
+    // 于是「配色 + 侧栏增强 + 右侧导航」三个分工不同的插件被算成重复。面板类是否重复要看
+    // 它自己那一族（audit_trim 的组冗余另判），不该并进主题域。
     const h = hits(facts, THIRD_RE.theme);
-    const p = hits(facts, THIRD_RE.panel);
-    const all = h.concat(p);
-    if (all.length >= 3) return { status: 'redundant', detail: all.map((x) => x.name).join('、'), evidence: [] };
-    if (all.length) return { status: 'present', detail: all.map((x) => x.name).join('、'), evidence: [] };
-    return { status: 'missing', detail: '没有主题/布局插件', evidence: [] };
+    if (h.length >= 2) return { status: 'redundant', detail: h.map((x) => x.name).join('、'), evidence: [] };
+    if (h.length === 1) return { status: 'present', detail: h[0].name, evidence: [] };
+    return { status: 'missing', detail: '没有主题插件', evidence: [] };
   },
 };
 

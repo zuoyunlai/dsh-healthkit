@@ -921,7 +921,7 @@ export function buildTools(deps) {
   },
   {
     name: 'audit_trim',
-    description: '装载面瘦身分析：报服务插件数 vs bundles 上限、同能力多实现、记忆插件叠放，给出「谁是主力、谁是可关候选」。只读，不写 cordis.patch.yml',
+    description: '装载面瘦身分析：报服务插件数与各 profile 最大 bundles 数的配比（基线非官方上限）、同能力多实现、记忆插件叠放，给出「谁是主力、谁是可关候选」。只读，不写 cordis.patch.yml',
     parameters: {
       type: 'object',
       properties: {
