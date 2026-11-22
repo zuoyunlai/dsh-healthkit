@@ -58,7 +58,11 @@ export function collect(ctxOpts) {
     var depSpecs = pkg.dependencies || {};
     var third = bundles.filter(function (b) { return b.indexOf('@deepseek-ai/') !== 0; });
     var missing = third.filter(function (b) { return deps.indexOf(b) === -1; });
-    var notBundledRaw = deps.filter(function (d) { return third.indexOf(d) === -1; });
+    // 2026-11-21 修（R1 官方作用域误报）：notBundled 必须拿**全量 bundles** 比对。
+    // 原来复用上面剔过 @deepseek-ai/* 的 third，于是任何 @deepseek-ai/* 依赖
+    // （例：@deepseek-ai/dsh-subagent-claude-code）即使明明白白列在 dsh.profile.bundles 里，
+    // 也永远找不到 → 每次体检都多一条 P1「装了但未启用」。
+    var notBundledRaw = deps.filter(function (d) { return bundles.indexOf(d) === -1; });
     // 2026-11-20 反哺 P1：市场/官方插件页的「停用」不改 dependencies，只把包从
     // dsh.profile.bundles 里摘掉（dshmarket lib/profile.js removeProfileBundle 注释：
     // "The package itself stays installed; enabling re-adds it"）。

@@ -18,6 +18,19 @@ function F(o) {
     target: o.target || ((o.measured && o.measured.profile) ? String(o.measured.profile) : ''),
     fixHint: o.fixHint || null, fp: o.fp || fpOf(o) };
 }
+// id 归一化：市场记录用完整包名，patch 行用短 id，两边都要能对上同一个包。
+// 去 scope（@scope/pkg → pkg）、去 dsh- 前缀、小写；空串返回 ''（不参与匹配，避免空对空）。
+function normId(s) {
+  var t = String(s == null ? '' : s).trim().toLowerCase();
+  if (!t) return '';
+  if (t.charAt(0) === '@') {
+    var i = t.indexOf('/');
+    if (i !== -1) t = t.slice(i + 1);
+  }
+  if (t.indexOf('dsh-') === 0) t = t.slice(4);
+  return t;
+}
+
 export function runRules(facts, allowlist) {
   var out = [];
   var cfg = allowlist || {};
@@ -51,10 +64,19 @@ export function runRules(facts, allowlist) {
     // 市场停用只把包从 bundles 摘掉、依赖留着（启用时再加回）。旧版一律判
     // 「装了但未挂载」P1 并给 `dsh plugin remove`——照着修就把用户主动保留的插件删了，
     // 重新启用还得重装。所以先按「用户停用」解释并降噪，剩下的才按未启用报。
-    var intent = {};
-    (Array.isArray(p.marketDisabled) ? p.marketDisabled : []).forEach(function (n) { intent[n] = 'market'; });
-    var realNotBundled = p.depsNotBundled.filter(function (d) { return !allow[d] && !intent[d]; });
-    var intentNotBundled = p.depsNotBundledRaw.filter(function (d) { return !allow[d] && !!intent[d]; });
+    // 2026-11-21 修（停用记录认不出）：市场 state.json 记的是**完整包名**
+    // （@yolk_vat-y/dsh-project-memory），patch 行 id 是**短 id**（project-memory）。
+    // 旧实现按原样精确比，于是自己停用的包仍被报成「装了但未启用」/
+    // 「disabled 指向的包不在依赖里」。现在两边都过一遍 normId 再比。
+    var disabledNames = Array.isArray(p.marketDisabled) ? p.marketDisabled : [];
+    var disabledKeys = disabledNames.map(normId);
+    var isIntent = function (name) {
+      if (disabledNames.indexOf(name) !== -1) return true;
+      var k = normId(name);
+      return !!k && disabledKeys.indexOf(k) !== -1;
+    };
+    var realNotBundled = p.depsNotBundled.filter(function (d) { return !allow[d] && !isIntent(d); });
+    var intentNotBundled = p.depsNotBundledRaw.filter(function (d) { return !allow[d] && isIntent(d); });
     if (intentNotBundled.length) out.push(F({ ruleId: 'R1b', dimension: 'consistency', severity: 'INFO',
       title: '按你的停用选择未挂载 ' + intentNotBundled.length + ' 个（' + p.name + '）：符合预期',
       evidence: [p.dir + '/package.json', p.dir + '/.dsh-market/state.json'],
@@ -90,10 +112,8 @@ export function runRules(facts, allowlist) {
       // id ≠ npm 包名：只能按已知映射对账，对不上就保留「疑似」，不猜。
       // 市场停用记录里的包（可能已卸载）会留下 disabled 条目——那是用户的开关记录，
       // 删条目等于撤销记录，所以先摘出来，不进「疑似空转」。
-      var isIntentRecord = function (id) {
-        var tail = String(id || '').split('/').pop();
-        return (p.marketDisabled || []).some(function (n) { return n === id || String(n).split('/').pop() === tail; });
-      };
+      // 2026-11-21：与上面 R1 共用同一套归一化，短 id↔完整包名不再认不出。
+      var isIntentRecord = isIntent;
       var suspicious = disabledIds.filter(function (id) {
         if (coreIds.indexOf(id) !== -1) return false;
         if (isIntentRecord(id)) return false;

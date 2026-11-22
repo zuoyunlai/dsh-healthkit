@@ -1,5 +1,25 @@
 # CHANGELOG
 
+## 0.14.2 — 2026-11-22
+
+体检判据两处误报修复（0.14.1 真机复跑时发现）。21 个工具，测试 46 组，39 条规则。
+
+- **P1 误报 · 已挂载的官方作用域依赖被判「装了但未启用」**：`collect` 里 `depsNotBundled` 拿「剔掉 `@deepseek-ai/*` 的
+  thirdPartyBundles」去比依赖，于是任何官方作用域依赖（实测 `@deepseek-ai/dsh-subagent-claude-code`，明明白白列在
+  `dsh.profile.bundles` 第 29 项）都会被报成 P1，且这条噪声挂在 `fp=R1#<profile>` 上反复出现。改为与**全量 `bundles`** 比对。
+- **P2 误报 · 停用记录认不出（短 id ↔ 完整包名）**：市场 `.dsh-market/state.json` 记完整包名
+  （`@yolk_vat-y/dsh-project-memory`），`cordis.patch.yml` 行 id 是短 id（`project-memory`）；旧实现按尾段精确比，
+  两边对不上 → 用户自己停用的包被 R2 报成「disabled 指向的包不在依赖里（疑似空转）」。新增 `normId`（去 scope、
+  去 `dsh-` 前缀、小写），R1/R1b/R2/R2b 共用同一套归一化。
+- **回归**：新增 `test/collect-bundle-scope.mjs`（已挂载官方依赖不许报 / 未挂载官方依赖仍要报 / R25 不受影响——
+  第 ② 条防「改过头变安全假绿」）；`test/intent.mjs` 补两例（记录写全名 + patch 写短 id、反向）。测试组数 45 → 46，
+  README 标题同步（`docs-drift` 钉住）。
+- **真机复跑对照**（同一台机器、同一份配置）：R1 3 → 2（`dsh-openrouter-providers`、`dsh-remote` 这两个真丢行保留），
+  R2 1 → 0，R2b 1 → 2（project-memory / vision-bridge 归位到「符合预期」）。
+- **已知环境限制（本次未改，留待下一批）**：本机 Node 26 下 `junction` 的 `lstat().isSymbolicLink()` 返回 false、
+  目录符号链接需权限（`EPERM`），`test/clean-symlink.mjs` 在本机跑不起来（CI ubuntu 正常跑）；顺带提示
+  `clean` 的「不跟随链接」守卫在 Windows junction 上可能失效，需单独核查。
+
 ## 0.14.1 — 2026-11-20
 
 第三方审计反哺批（Claude Code 独立只读审计 + 本人逐条复核并补跑验证）。21 个工具，测试 45 组，39 条规则。

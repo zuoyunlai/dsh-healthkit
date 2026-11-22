@@ -78,4 +78,28 @@ const by = (list, id) => list.filter((f) => f.ruleId === id);
   assert.match(by(f, 'R2')[0].fixHint, /保留它/, 'R2 修法要提醒「停用记录别删」');
 }
 
-console.log('intent: 通过（R1 降噪 / R1b / 置信度降级 / R2 与 R2b 分流）');
+// ⑥ 记录写完整包名、patch 行写短 id（真实形态：@scope/dsh-x ↔ x）→ 不报 R2，报 R2b
+{
+  const fs6 = factsWith((p, f) => {
+    p.depsNotBundled = []; p.depsNotBundledRaw = [];
+    p.marketDisabled = ['@yolk_vat-y/dsh-project-memory']; p.marketStateReadable = true;
+    f.patchEntries['desktop'] = [{ id: 'project-memory', disabled: true, name: null }];
+  });
+  const f = runRules(fs6, allow);
+  assert.equal(by(f, 'R2').length, 0, '短 id 与完整包名必须能对上，不得判「疑似空转」');
+  assert.equal(by(f, 'R2b').length, 1, '应报 1 条 R2b（识别为你的停用记录）');
+}
+
+// ⑦ 反向：记录写短名、依赖是全名 → 降噪为 R1b，不得判 R1
+{
+  const fs7 = factsWith((p) => {
+    p.depsNotBundled = ['@yolk_vat-y/dsh-project-memory'];
+    p.depsNotBundledRaw = ['@yolk_vat-y/dsh-project-memory'];
+    p.marketDisabled = ['project-memory']; p.marketStateReadable = true;
+  });
+  const f = runRules(fs7, allow);
+  assert.equal(by(f, 'R1').length, 0, '记录写短名时不得把对应依赖判成 R1');
+  assert.equal(by(f, 'R1b').length, 1, '应报 1 条 R1b');
+}
+
+console.log('intent: 通过（R1 降噪 / R1b / 置信度降级 / R2 与 R2b 分流 / 短 id↔完整包名）');
