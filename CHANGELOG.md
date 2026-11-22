@@ -1,5 +1,29 @@
 # CHANGELOG
 
+## 0.14.3 — 2026-11-22
+
+判据口径批（backlog B1–B4，全部来自真机复跑时对不上号的两个数）。21 个工具，测试 47 组，39 条规则。
+
+- **B1 模型路由**：「声明 10 个 provider，只有 5 个有压缩策略」是跨 profile 累加 + 分子分母不同集合算出来的假象。改为按
+  **(profile, provider) 同集合**比对：缺口只算「声明了模型却没有 modelPolicy」的 provider，detail 点名 provider 与模型数，
+  0 模型的空壳 provider 单列不计。真机从「10/5」变成「longhua（12 个模型）缺策略；openrouter 空壳」。
+- **B3a 检索冲突**：旧判据「有人 takeover 且存在别的 fetchProvider」把**宿主把抓取委托给插件 provider** 的合法接线
+  判成 conflicting（实测：web.fetchProvider = fs-quality-fetch 正是 dsh-free-search 注册的）。改为只有两种算冲突：
+  两个插件都想接管、或两个实现把 fetchProvider 指向不同 provider；单入口委托判 present 并写清「谁接管、指向谁」。
+- **B3b 图像生成**：`capabilities` 的 image 正则含 `vision hub|vision bridge|ocr|modlens`，把视觉插件算成图像生成实现，
+  trim 因此报假的「image ×3」。正则收窄到真正产出图片的实现，视觉归 vision-ocr 域。
+- **B3c 主题/可用性**：原判据把 theme 命中数 + panel 命中数相加 ≥3 就判 redundant，于是「配色 + 侧栏增强 + 右侧导航」
+  三个分工不同的插件被算成重复。面板类不再并入主题域。
+- **B4 装载面基线**：`trim` 的「bundles 上限 43」是硬编码兜底（`facts.maxBundles` 从没人赋值），而 R15 的数是现算的
+  各 profile 最大值——两个 43 只是巧合。改为同源现算，并把「宿主上限」措辞全部纠正为「基线，非官方上限」
+  （含 UI 中英文：插件数 / 基线、Plugins / baseline）。
+- **B2 clean × junction（实测无缺陷）**：造 junction 指向 DSH_HOME 外 1MB 目录，`scan` 只报 500 字节/2 文件（未跟随）、
+  `apply` 后回收区里仍是链接、外部文件原样——`walk` 用 Dirent 判类型，重解析点天然跳过。不改产品代码；测试改为
+  本机建不出可识别符号链接时 **SKIP 并打印原因**（此前 FAIL 是因为受限沙箱把 junction 降级成普通目录）。
+- **回归**：新增 `test/caliber.mjs`（maxBundles 现算 / 文案无「宿主上限」/ 视觉不打 image 标签）；`test/capability-map.mjs`
+  重写 fixture 并加三组反例（两个 takeover、两个不同 fetchProvider、主题三件套）；`test/clean-symlink.mjs` 改 SKIP 守卫。
+  测试组数 46 → 47，README 同步（`docs-drift` 钉住）。
+
 ## 0.14.2 — 2026-11-22
 
 体检判据两处误报修复（0.14.1 真机复跑时发现）。21 个工具，测试 46 组，39 条规则。
