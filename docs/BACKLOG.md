@@ -43,3 +43,18 @@
 - **验收**：fixture 三条 —— 宿主委托插件 provider → present；两个第三方各注册 provider 且都指向 → conflicting；仅插件 takeover、宿主未指向 → 不报冲突（present 或 unknown）。另加 image/theme 两域的反例，确保视觉插件与侧栏三件套不被算成重复。
 - **备注**：与 B1（模型路由分子分母不同集合）同源，都是「按名字/数量粗筛」；修的时候建议一次改完，别分三次发。
 
+## B4 · 「bundles 上限 43」是插件硬编码常量，且与 R15 口径不同源（P2）
+
+- **现象**：`audit_trim` 报「服务插件 56 个，超过宿主 bundles 上限 43」；R15 报「客户端服务插件数 56 > 最大 bundles 42/43」。两个 43 看着像同一条官方规则，其实来源不同，也**都不是宿主给的**。
+- **证据（2026-11-22 本机）**：
+  - `src/trim.mjs:21`：`var maxBundles = (facts && facts.maxBundles) || 43;`。全仓 grep 过，`facts.maxBundles` **从未被赋值**（只有 trim 读、panel/toolface 转述），所以永远走硬编码 43；
+  - `src/rules.mjs:232-234`：R15 的「最大 bundles」是**现算**——`Math.max(0, ...profiles.map(p => p.bundles.length))`，取各 profile 里最长的 bundle 列表。本次会话里就见过 **42 与 43 两种值**，因为 desktop 的 bundles 数变过；
+  - 两数当前都等于 43 纯属巧合（desktop 恰好 43 条）。若它变成 45，同一次报告会自相矛盾：R15 说 45、trim 仍说 43；
+  - 宿主侧没找到断言 bundles 数量上限的常量或文档：`app.asar` 里的 dsh 源码不落盘，`app.asar.unpacked` 只有 native 库；仓库文档里出现的 43 全是我们自己报告的复述。
+- **语义真相**：R15 报的不是「超过官方上限」，而是「**宿主报的服务插件数 > 任何 profile 声明的 bundle 数**」——这是配比失衡信号（entry 膨胀 / 服务被重复挂载），INFO/P3 量级，不是硬约束。
+- **位置**：`src/trim.mjs:21`（常量与文案 :65/:87）、`src/rules.mjs:232-234`、`src/toolface.mjs:924`（工具描述也写「bundles 上限」）、`src/panel.mjs:459`。
+- **修法方向**：① trim 改用与 R15 同一套现算值（`max(p.bundles.length)`），删掉硬编码 43；② 文案去掉「宿主上限」，写成「服务插件 56 / 最大 profile bundles 43（经验阈值，非宿主上限）」或直接写「服务插件数 > 任何 profile 的 bundle 数」；③ 工具描述、面板、建议句三处一起改，避免只改一处又漂；④ 将来若真拿到官方常量，再换源并在 docs 里注明出处。
+- **验收**：fixture 两个 profile 不同 bundles 长度 → 断言 `trim.maxBundles === max(bundles.length)`；同一次运行里 R15 与 trim 的数值必须一致；所有对外文案不得出现「宿主上限」字样。
+- **备注**：与 B1/B3 同族（口径与措辞）；单独发也行，因为它只碰文案与一个默认值，改动面比 B1/B3 小。
+
+
